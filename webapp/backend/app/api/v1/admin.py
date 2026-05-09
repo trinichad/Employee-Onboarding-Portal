@@ -605,14 +605,20 @@ def restart_service(current: CurrentUser = Depends(require_global_admin)) -> dic
     finally:
         audit_db.close()
 
-    systemctl = shutil.which("systemctl")
+    systemctl = shutil.which("systemctl") or next(
+        (p for p in ("/usr/bin/systemctl", "/bin/systemctl") if os.path.exists(p)),
+        None,
+    )
     if not systemctl or not os.path.exists("/run/systemd/system"):
         return {
             "status": "noop",
             "service": "itrequest-backend",
             "message": "Dev mode (no systemd) — restart uvicorn manually for port changes to take effect.",
         }
-    sudo = shutil.which("sudo") or "/usr/bin/sudo"
+    sudo = shutil.which("sudo") or next(
+        (p for p in ("/usr/bin/sudo", "/bin/sudo") if os.path.exists(p)),
+        "/usr/bin/sudo",
+    )
     # Detach so the parent process can return the response before dying.
     try:
         subprocess.Popen(

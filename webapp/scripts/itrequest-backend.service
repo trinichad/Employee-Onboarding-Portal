@@ -7,7 +7,7 @@ Type=simple
 User=__USER__
 Group=__USER__
 WorkingDirectory=__APP_DIR__/webapp/backend
-Environment="PATH=__APP_DIR__/webapp/backend/.venv/bin"
+Environment="PATH=__APP_DIR__/webapp/backend/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="BACKEND_PORT=8000"
 EnvironmentFile=__APP_DIR__/webapp/backend/.env
 # runtime.env is written by the admin UI; "-" means missing-file is OK.
