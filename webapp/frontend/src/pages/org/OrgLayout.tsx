@@ -34,6 +34,7 @@ export default function OrgLayout() {
     ...(isAdmin ? [
       { to: `/${orgSlug}/users`, label: "Users", icon: Users },
       { to: `/${orgSlug}/form`, label: "Form Builder", icon: Settings2 },
+      { to: `/${orgSlug}/resources`, label: "Resources", icon: Settings2 },
       { to: `/${orgSlug}/settings`, label: "Settings", icon: Settings },
     ] : []),
     { to: `/${orgSlug}/profile`, label: "Profile", icon: User },

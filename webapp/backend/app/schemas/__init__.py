@@ -313,3 +313,62 @@ class OrganizationSmtpOut(SmtpConfigOut):
 
 class OrganizationSmtpUpdate(SmtpConfigUpdate):
     pass
+
+
+# ---------- Resource catalog ----------
+RESOURCE_KINDS = (
+    "property",
+    "shared_mailbox",
+    "network_folder",
+    "distribution_group",
+    "google_drive",
+    "license",
+    "email",
+    "other",
+)
+
+
+class OrgResourceIn(BaseModel):
+    kind: str = Field(..., max_length=40)
+    name: str = Field(..., min_length=1, max_length=255)
+    attributes: Dict[str, Any] = Field(default_factory=dict)
+    linked_resource_ids: List[int] = Field(default_factory=list)
+    is_active: bool = True
+
+    @model_validator(mode="after")
+    def _validate_kind(self) -> "OrgResourceIn":
+        if self.kind not in RESOURCE_KINDS:
+            raise ValueError(f"Unsupported kind: {self.kind}")
+        return self
+
+
+class OrgResourceUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    attributes: Optional[Dict[str, Any]] = None
+    linked_resource_ids: Optional[List[int]] = None
+    is_active: Optional[bool] = None
+
+
+class OrgResourceOut(ORMModel):
+    id: int
+    organization_id: int
+    kind: str
+    name: str
+    attributes: Dict[str, Any] = Field(default_factory=dict)
+    linked_resource_ids: List[int] = Field(default_factory=list)
+    is_active: bool
+    updated_at: Optional[datetime] = None
+
+
+# ---------- Employee directory ----------
+class EmployeeOut(ORMModel):
+    id: int
+    organization_id: int
+    full_name: str
+    email: str
+    status: str
+    last_request_id: Optional[int] = None
+    last_request_type: str
+    last_payload: Dict[str, Any] = Field(default_factory=dict)
+    last_submitted_at: Optional[datetime] = None
+

@@ -27,6 +27,7 @@ import OrgRequestNew from "@/pages/org/OrgRequestNew";
 import OrgRequestDetail from "@/pages/org/OrgRequestDetail";
 import OrgUsers from "@/pages/org/OrgUsers";
 import OrgFormBuilder from "@/pages/org/OrgFormBuilder";
+import OrgResources from "@/pages/org/OrgResources";
 import OrgProfile from "@/pages/org/OrgProfile";
 import OrgSettings from "@/pages/org/OrgSettings";
 
@@ -79,6 +80,9 @@ export default function App() {
         } />
         <Route path="form" element={
           <Protected roles={["client_admin", "global_admin"]}><OrgFormBuilder /></Protected>
+        } />
+        <Route path="resources" element={
+          <Protected roles={["client_admin", "global_admin"]}><OrgResources /></Protected>
         } />
         <Route path="settings" element={
           <Protected roles={["client_admin", "global_admin"]}><OrgSettings /></Protected>

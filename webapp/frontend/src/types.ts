@@ -32,14 +32,35 @@ export interface FormSchemaDoc {
   request_types?: string[];
   fields?: FormField[];
   groups?: FormGroup[];
+  /** Request types that should show the employee typeahead/prefill UI. */
+  lookup_request_types?: string[];
+  /** Request types that should mark the employee as terminated and surface
+   *  the forwarding / mailbox-grant fields in the renderer. */
+  termination_request_types?: string[];
 }
+export type ResourceKind =
+  | "property" | "shared_mailbox" | "network_folder" | "distribution_group"
+  | "google_drive" | "license" | "email" | "other";
+export type FieldRole =
+  | "" | "employee_name" | "employee_email"
+  | "forward_email_to" | "grant_full_access_to";
 export interface FormField {
   id: string;
   label: string;
   description?: string;
-  type: "text" | "date" | "textarea" | "email" | "number" | "select";
+  type: "text" | "date" | "textarea" | "email" | "number" | "select" | "resource";
   required?: boolean;
   options?: string[];
+  /** For type === "resource": which catalog kind to pull options from. */
+  resource_kind?: ResourceKind;
+  /** When set, populate this field from another (resource) field's chosen
+   *  resource. `attribute` may be "name" or any key under attributes. */
+  auto_from?: { source_field_id: string; attribute: string };
+  /** For resource fields: limit options to those linked to the resource
+   *  selected in `source_field_id`. */
+  filter_by?: { source_field_id: string };
+  /** Optional semantic role used by the renderer for special behaviors. */
+  role?: FieldRole;
 }
 export interface FormGroup {
   id: string;
@@ -155,4 +176,27 @@ export interface TotpSetupData {
   qr_png_base64: string;
   issuer: string;
   account: string;
+}
+
+export interface OrgResource {
+  id: number;
+  organization_id: number;
+  kind: ResourceKind;
+  name: string;
+  attributes: Record<string, any>;
+  linked_resource_ids: number[];
+  is_active: boolean;
+  updated_at?: string;
+}
+
+export interface Employee {
+  id: number;
+  organization_id: number;
+  full_name: string;
+  email: string;
+  status: "active" | "terminated";
+  last_request_id?: number | null;
+  last_request_type: string;
+  last_payload: Record<string, any>;
+  last_submitted_at?: string | null;
 }

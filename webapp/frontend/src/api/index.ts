@@ -1,6 +1,7 @@
 import { api } from "./client";
 import type {
   AuditEntry,
+  Employee,
   EmployeeLoginResponse,
   EmployeeRequest,
   FormSchemaDoc,
@@ -8,8 +9,10 @@ import type {
   LoginResponse,
   Organization,
   OrganizationSmtp,
+  OrgResource,
   PlatformSettings,
   RequestStatus,
+  ResourceKind,
   Role,
   SmtpConfigUpdate,
   TokenPair,
@@ -154,4 +157,20 @@ export const orgApi = {
 
   updateSettings: (slug: string, data: Partial<{ name: string; support_email: string; from_email: string; from_name: string; dashboard_columns: string[]; branding: any }>) =>
     api.patch<Organization>(`/orgs/${slug}/settings`, data).then(r => r.data),
+
+  // resource catalog
+  listResources: (slug: string, params?: { kind?: ResourceKind; include_inactive?: boolean }) =>
+    api.get<OrgResource[]>(`/orgs/${slug}/resources`, { params }).then(r => r.data),
+  createResource: (slug: string, data: { kind: ResourceKind; name: string; attributes?: Record<string, any>; linked_resource_ids?: number[]; is_active?: boolean }) =>
+    api.post<OrgResource>(`/orgs/${slug}/resources`, data).then(r => r.data),
+  updateResource: (slug: string, id: number, data: Partial<{ name: string; attributes: Record<string, any>; linked_resource_ids: number[]; is_active: boolean }>) =>
+    api.patch<OrgResource>(`/orgs/${slug}/resources/${id}`, data).then(r => r.data),
+  deleteResource: (slug: string, id: number) =>
+    api.delete(`/orgs/${slug}/resources/${id}`),
+
+  // employee directory
+  searchEmployees: (slug: string, params?: { q?: string; status?: "active" | "terminated"; limit?: number }) =>
+    api.get<Employee[]>(`/orgs/${slug}/employees`, { params }).then(r => r.data),
+  getEmployee: (slug: string, id: number) =>
+    api.get<Employee>(`/orgs/${slug}/employees/${id}`).then(r => r.data),
 };

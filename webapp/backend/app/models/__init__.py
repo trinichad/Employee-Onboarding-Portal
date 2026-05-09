@@ -228,3 +228,78 @@ class PlatformSetting(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+# --- Resource catalog ---------------------------------------------------------
+# A simple per-org list of "things" (properties, shared mailboxes, network
+# folders, distribution groups, google drives, licenses, emails, etc.) that
+# the form builder can pull options from. Each resource has free-form
+# attributes (key/value) and a list of related resource ids ("links") so a
+# Property can fan out to its mailboxes/folders/drives.
+class ResourceKind(str, PyEnum):
+    PROPERTY = "property"
+    SHARED_MAILBOX = "shared_mailbox"
+    NETWORK_FOLDER = "network_folder"
+    DISTRIBUTION_GROUP = "distribution_group"
+    GOOGLE_DRIVE = "google_drive"
+    LICENSE = "license"
+    EMAIL = "email"
+    OTHER = "other"
+
+
+class OrgResource(Base):
+    __tablename__ = "org_resources"
+    __table_args__ = (
+        Index("ix_org_resources_org_kind", "organization_id", "kind"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    organization_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    attributes: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    # JSON list of related OrgResource ids (any kind).
+    linked_resource_ids: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+# --- Employee directory -------------------------------------------------------
+# Lightweight per-org employee record updated whenever a request is submitted.
+# Used by the form renderer to typeahead + prefill on Promotion / Termination /
+# Rehire request types, and to surface "current access" derived from the most
+# recent request payload.
+class EmployeeStatus(str, PyEnum):
+    ACTIVE = "active"
+    TERMINATED = "terminated"
+
+
+class Employee(Base):
+    __tablename__ = "employees"
+    __table_args__ = (
+        Index("ix_employees_org_email", "organization_id", "email"),
+        Index("ix_employees_org_name", "organization_id", "full_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    organization_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    full_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    email: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default=EmployeeStatus.ACTIVE.value)
+    last_request_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("employee_requests.id", ondelete="SET NULL"), nullable=True
+    )
+    last_request_type: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    last_payload: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    last_submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

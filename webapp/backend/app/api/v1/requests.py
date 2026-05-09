@@ -336,6 +336,13 @@ def submit_request_to_support(
     row.submitted_by_id = current.user.id
     row.submission_count = (row.submission_count or 0) + 1
     row.edited_after_submit = False
+    # Update the org-wide employee directory from this submission so future
+    # Promotion / Termination / Rehire requests can typeahead and prefill.
+    try:
+        from app.api.v1.employees import upsert_from_request
+        upsert_from_request(db, org, row, schema)
+    except Exception:  # pragma: no cover - directory upsert must not break submit
+        pass
     audit(db, actor_id=current.user.id, action="request.submit_to_support", organization_id=org.id,
           target_type="employee_request", target_id=row.id, meta={"to": org.support_email})
     db.commit()
@@ -392,6 +399,11 @@ def resubmit_request_to_support(
     row.submitted_by_id = current.user.id
     row.submission_count = revision
     row.edited_after_submit = False
+    try:
+        from app.api.v1.employees import upsert_from_request
+        upsert_from_request(db, org, row, schema)
+    except Exception:  # pragma: no cover
+        pass
     # Status remains SUBMITTED/IN_PROGRESS/etc. — do not reset.
     audit(db, actor_id=current.user.id, action="request.resubmit_to_support", organization_id=org.id,
           target_type="employee_request", target_id=row.id,
