@@ -59,3 +59,6 @@ Thumbs.db
 
 # Alembic local cache
 webapp/backend/alembic/versions/__pycache__/
+
+# Per-machine runtime config written by admin UI
+webapp/runtime.env
