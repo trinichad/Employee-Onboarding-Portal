@@ -32,6 +32,9 @@ export default function AdminSettings() {
   const [defaultFromName, setDefaultFromName] = useState("");
   const [timezone, setTimezone] = useState("UTC");
   const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS);
+  const [publicBaseUrl, setPublicBaseUrl] = useState("");
+  const [backendPort, setBackendPort] = useState<number>(8000);
+  const [frontendPort, setFrontendPort] = useState<number>(5173);
 
   useEffect(() => {
     if (settings.data) {
@@ -43,6 +46,9 @@ export default function AdminSettings() {
       setColumns(settings.data.default_dashboard_columns?.length
         ? settings.data.default_dashboard_columns
         : DEFAULT_COLUMNS);
+      setPublicBaseUrl(settings.data.public_base_url || "");
+      setBackendPort(settings.data.backend_port ?? 8000);
+      setFrontendPort(settings.data.frontend_port ?? 5173);
     }
   }, [settings.data]);
 
@@ -54,6 +60,9 @@ export default function AdminSettings() {
       default_from_name: defaultFromName,
       timezone,
       default_dashboard_columns: columns,
+      public_base_url: publicBaseUrl.trim(),
+      backend_port: Number(backendPort) || 8000,
+      frontend_port: Number(frontendPort) || 5173,
     }),
     onSuccess: () => {
       toast.success("Platform settings saved");
@@ -139,6 +148,47 @@ export default function AdminSettings() {
               </select>
               <p className="help">Used for server-side date math and report rollups. UI timestamps still render in each viewer's local time. Current platform time: <code>{nowLocal}</code>.</p>
             </div>
+          </div>
+        </div>
+
+        <div className="card md:col-span-2">
+          <div className="card-header">
+            <h3 className="font-semibold">Network &amp; ports</h3>
+          </div>
+          <div className="card-body space-y-3">
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Configure the public URL and listen ports. <strong>Restart the
+              services after saving</strong> for new ports to take effect:
+              <code className="ml-1">webapp/scripts/itrequest.sh restart</code>.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <label className="label">Public base URL</label>
+                <input className="input" value={publicBaseUrl} onChange={(e) => setPublicBaseUrl(e.target.value)} placeholder="https://onboarding.example.com" />
+                <p className="help">Used in invite, password-reset, and approval emails. Include the scheme (http/https) and any port if non-standard.</p>
+              </div>
+              <div>
+                <label className="label">Backend port</label>
+                <input className="input" type="number" min={1} max={65535} value={backendPort} onChange={(e) => setBackendPort(Number(e.target.value))} />
+                <p className="help">Uvicorn listen port. Bound on 127.0.0.1 by default.</p>
+              </div>
+              <div>
+                <label className="label">Frontend port</label>
+                <input className="input" type="number" min={1} max={65535} value={frontendPort} onChange={(e) => setFrontendPort(Number(e.target.value))} />
+                <p className="help">Forward this port through your router for public access.</p>
+              </div>
+            </div>
+            {settings.data && (
+              <div className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
+                <div>Runtime config file: <code>{settings.data.runtime_env_path}</code></div>
+                {!settings.data.runtime_env_writable && (
+                  <div className="text-amber-700 dark:text-amber-400">
+                    Warning: backend can't write to that path. Saved values won't propagate to systemd.
+                    Make sure the service user owns <code>webapp/</code>.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

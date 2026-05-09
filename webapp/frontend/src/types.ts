@@ -121,6 +121,10 @@ export interface PlatformSettings extends SmtpConfig {
   smtp_configured: boolean;
   smtp_from: string;
   public_base_url: string;
+  backend_port: number;
+  frontend_port: number;
+  runtime_env_path: string;
+  runtime_env_writable: boolean;
 }
 
 export interface SmtpConfigUpdate {

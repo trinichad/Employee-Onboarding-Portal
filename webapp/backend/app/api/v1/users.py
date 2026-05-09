@@ -57,8 +57,9 @@ def invite_user(
         invited_by_id=current.user.id, expires_at=_now() + timedelta(days=7),
     ))
     addr, name = org_sender(db, org)
+    from app.services.runtime import public_base_url
     invite_email(email, org.name,
-                 f"{settings.PUBLIC_BASE_URL}/{org.slug}/accept?token={token}",
+                 f"{public_base_url(db)}/{org.slug}/accept?token={token}",
                  from_addr=addr, from_name=name, smtp=org_smtp(db, org))
     audit(db, actor_id=current.user.id, action="user.invite", organization_id=org.id,
           target_type="user", target_id=user.id, meta={"role": body.role.value})
@@ -120,8 +121,9 @@ def reset_user_password(user_id: int, bound=Depends(require_org_admin), db: Sess
     token = secrets.token_urlsafe(32)
     db.add(PasswordResetToken(token=token, user_id=user.id, expires_at=_now() + timedelta(hours=2)))
     addr, name = org_sender(db, org)
+    from app.services.runtime import public_base_url
     reset_email(user.email,
-                f"{settings.PUBLIC_BASE_URL}/{org.slug}/reset?token={token}",
+                f"{public_base_url(db)}/{org.slug}/reset?token={token}",
                 from_addr=addr, from_name=name, smtp=org_smtp(db, org))
     audit(db, actor_id=current.user.id, action="user.force_password_reset", organization_id=org.id,
           target_type="user", target_id=user.id)

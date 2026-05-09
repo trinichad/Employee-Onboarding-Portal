@@ -67,6 +67,17 @@ npm run build
 EOF
 
 # --- 5. systemd units ---------------------------------------------------------
+# Seed runtime.env if missing — systemd EnvironmentFile reads BACKEND_PORT,
+# FRONTEND_PORT, PUBLIC_BASE_URL from this file. The admin UI rewrites it.
+RUNTIME_ENV="$APP_DIR/webapp/runtime.env"
+if [ ! -f "$RUNTIME_ENV" ]; then
+  sudo -u "$RUN_USER" bash -c "cat > '$RUNTIME_ENV' <<RUNEOF
+BACKEND_PORT=8000
+FRONTEND_PORT=5173
+PUBLIC_BASE_URL=
+RUNEOF"
+fi
+
 install_unit() {
   local src="$1" name="$2"
   sed -e "s|__APP_DIR__|$APP_DIR|g" -e "s|__USER__|$RUN_USER|g" \

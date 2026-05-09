@@ -8,8 +8,12 @@ User=__USER__
 Group=__USER__
 WorkingDirectory=__APP_DIR__/webapp/backend
 Environment="PATH=__APP_DIR__/webapp/backend/.venv/bin"
+Environment="BACKEND_PORT=8000"
+Environment="FRONTEND_PORT=5173"
 EnvironmentFile=__APP_DIR__/webapp/backend/.env
-ExecStart=__APP_DIR__/webapp/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+# runtime.env is written by the admin UI; "-" means missing-file is OK.
+EnvironmentFile=-__APP_DIR__/webapp/runtime.env
+ExecStart=__APP_DIR__/webapp/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port ${BACKEND_PORT}
 Restart=on-failure
 RestartSec=3
 

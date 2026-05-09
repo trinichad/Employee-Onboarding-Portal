@@ -221,6 +221,10 @@ class PlatformSetting(Base):
     smtp_auth: Mapped[str] = mapped_column(String(20), nullable=False, default="")
     smtp_username: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     smtp_password: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    # Network / runtime settings (used by systemd unit files via runtime.env)
+    backend_port: Mapped[int] = mapped_column(Integer, nullable=False, default=8000)
+    frontend_port: Mapped[int] = mapped_column(Integer, nullable=False, default=5173)
+    public_base_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

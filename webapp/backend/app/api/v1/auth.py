@@ -30,6 +30,7 @@ from app.schemas import (
     UserOut,
 )
 from app.services.audit import audit
+from app.services.runtime import public_base_url
 from app.services.email import reset_email
 from app.services import totp as totp_svc
 
@@ -263,7 +264,7 @@ def password_forgot(body: PasswordResetRequest, db: Session = Depends(get_db)):
                 from app.services.sender import org_sender, org_smtp
                 sender_addr, sender_name = org_sender(db, org)
                 smtp_cfg = org_smtp(db, org)
-        url = f"{settings.PUBLIC_BASE_URL}{org_path}/reset?token={token}"
+        url = f"{public_base_url(db)}{org_path}/reset?token={token}"
         reset_email(user.email, url, from_addr=sender_addr, from_name=sender_name, smtp=smtp_cfg)
         audit(db, actor_id=user.id, action="auth.password_forgot", organization_id=user.organization_id)
         db.commit()

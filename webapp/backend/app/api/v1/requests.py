@@ -29,8 +29,9 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _request_link(org: Organization, request_id: int) -> str:
-    return f"{settings.PUBLIC_BASE_URL}/{org.slug}/requests/{request_id}"
+def _request_link(db: Session, org: Organization, request_id: int) -> str:
+    from app.services.runtime import public_base_url
+    return f"{public_base_url(db)}/{org.slug}/requests/{request_id}"
 
 
 def _approver_emails(db: Session, org_id: int) -> list[str]:
@@ -163,7 +164,7 @@ def create_request(
     db.refresh(row)
 
     submitter_label = f"{current.user.full_name} <{current.user.email}>"
-    link = _request_link(org, row.id)
+    link = _request_link(db, org, row.id)
     sender_addr, sender_name = org_sender(db, org)
     smtp_cfg = org_smtp(db, org)
     for email in _approver_emails(db, org.id):
@@ -263,7 +264,7 @@ def approve_request(
         sender_addr, sender_name = org_sender(db, org)
         approved_notification_email(
             submitter.email, org.name, row.id, row.subject or row.request_type,
-            current.user.full_name or current.user.email, _request_link(org, row.id),
+            current.user.full_name or current.user.email, _request_link(db, org, row.id),
             from_addr=sender_addr, from_name=sender_name, smtp=org_smtp(db, org),
         )
     return EmployeeRequestOut.model_validate(row)
