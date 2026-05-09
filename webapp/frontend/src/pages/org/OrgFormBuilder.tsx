@@ -66,6 +66,14 @@ export default function OrgFormBuilder() {
             <div><label className="label">Request types (one per line)</label>
               <textarea className="input min-h-[80px]" value={(doc.request_types || []).join("\n")}
                 onChange={(e) => setDoc({ ...doc, request_types: e.target.value.split("\n").map(s => s.trim()).filter(Boolean) })} /></div>
+            <div><label className="label">Lookup request types</label>
+              <p className="help mb-1">When the requestor picks one of these, the form shows an employee typeahead and prefills from their last submission.</p>
+              <textarea className="input min-h-[60px]" value={(doc.lookup_request_types || ["Promotion","Termination","Rehire"]).join("\n")}
+                onChange={(e) => setDoc({ ...doc, lookup_request_types: e.target.value.split("\n").map(s => s.trim()).filter(Boolean) })} /></div>
+            <div><label className="label">Termination request types</label>
+              <p className="help mb-1">Marks the employee as terminated and shows a current-access summary.</p>
+              <textarea className="input min-h-[60px]" value={(doc.termination_request_types || ["Termination"]).join("\n")}
+                onChange={(e) => setDoc({ ...doc, termination_request_types: e.target.value.split("\n").map(s => s.trim()).filter(Boolean) })} /></div>
           </div></div>
 
           <FieldsEditor doc={doc} setDoc={setDoc} />
@@ -79,7 +87,7 @@ export default function OrgFormBuilder() {
 
       {tab === "preview" && (
         <div className="card"><div className="card-body">
-          <FormRenderer schema={doc} values={preview} onChange={setPreview} />
+          <FormRenderer schema={doc} values={preview} onChange={setPreview} orgSlug={orgSlug} />
         </div></div>
       )}
     </>
@@ -103,18 +111,59 @@ function FieldsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSch
       </div>
       <div className="card-body space-y-3">
         {fields.map((f, i) => (
-          <div key={i} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-start">
-            <input className="input md:col-span-3" placeholder="id" value={f.id} onChange={(e) => update(i, { id: e.target.value })} />
-            <input className="input md:col-span-3" placeholder="Label" value={f.label} onChange={(e) => update(i, { label: e.target.value })} />
-            <select className="input md:col-span-2" value={f.type} onChange={(e) => update(i, { type: e.target.value })}>
-              {["text", "date", "email", "number", "textarea", "select"].map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-            <input className="input md:col-span-3" placeholder="Description" value={f.description || ""} onChange={(e) => update(i, { description: e.target.value })} />
-            <label className="flex items-center gap-1 text-xs md:col-span-1">
-              <input type="checkbox" checked={!!f.required} onChange={(e) => update(i, { required: e.target.checked })} /> req
-            </label>
-            <button className="btn-ghost text-red-600 md:col-span-12 -mt-2" onClick={() => setDoc({ ...doc, fields: fields.filter((_, j) => j !== i) })}>
-              Remove
+          <div key={i} className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-start">
+              <input className="input md:col-span-3" placeholder="id" value={f.id} onChange={(e) => update(i, { id: e.target.value })} />
+              <input className="input md:col-span-3" placeholder="Label" value={f.label} onChange={(e) => update(i, { label: e.target.value })} />
+              <select className="input md:col-span-2" value={f.type} onChange={(e) => update(i, { type: e.target.value })}>
+                {["text", "date", "email", "number", "textarea", "select", "resource"].map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <input className="input md:col-span-3" placeholder="Description" value={f.description || ""} onChange={(e) => update(i, { description: e.target.value })} />
+              <label className="flex items-center gap-1 text-xs md:col-span-1">
+                <input type="checkbox" checked={!!f.required} onChange={(e) => update(i, { required: e.target.checked })} /> req
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-start">
+              {f.type === "resource" && (
+                <select className="input md:col-span-3" value={f.resource_kind || ""}
+                  onChange={(e) => update(i, { resource_kind: e.target.value || undefined })}>
+                  <option value="">resource kind…</option>
+                  {["property","shared_mailbox","network_folder","distribution_group","google_drive","license","email","other"].map((k) => <option key={k} value={k}>{k}</option>)}
+                </select>
+              )}
+              {f.type === "resource" && (
+                <select className="input md:col-span-3" value={f.filter_by?.source_field_id || ""}
+                  onChange={(e) => update(i, { filter_by: e.target.value ? { source_field_id: e.target.value } : undefined })}>
+                  <option value="">filter by… (none)</option>
+                  {fields.filter((x) => x.id !== f.id && x.type === "resource").map((x) => <option key={x.id} value={x.id}>{x.label || x.id}</option>)}
+                </select>
+              )}
+              {f.type === "select" && (
+                <input className="input md:col-span-6" placeholder="options (comma-separated)" value={(f.options || []).join(", ")}
+                  onChange={(e) => update(i, { options: e.target.value.split(",").map(s => s.trim()).filter(Boolean) })} />
+              )}
+              <select className="input md:col-span-3" value={f.auto_from?.source_field_id || ""}
+                onChange={(e) => update(i, { auto_from: e.target.value ? { source_field_id: e.target.value, attribute: f.auto_from?.attribute || "name" } : undefined })}>
+                <option value="">auto-fill from… (none)</option>
+                {fields.filter((x) => x.id !== f.id).map((x) => <option key={x.id} value={x.id}>{x.label || x.id}</option>)}
+              </select>
+              {f.auto_from && (
+                <input className="input md:col-span-2" placeholder="attribute (e.g. address)" value={f.auto_from.attribute || ""}
+                  onChange={(e) => update(i, { auto_from: { ...f.auto_from!, attribute: e.target.value } })} />
+              )}
+              <select className="input md:col-span-3" value={f.role || ""}
+                onChange={(e) => update(i, { role: e.target.value || undefined })}>
+                <option value="">role… (none)</option>
+                <option value="employee_name">employee_name</option>
+                <option value="employee_email">employee_email</option>
+                <option value="forward_email_to">forward_email_to</option>
+                <option value="grant_full_access_to">grant_full_access_to</option>
+              </select>
+            </div>
+
+            <button className="btn-ghost text-red-600" onClick={() => setDoc({ ...doc, fields: fields.filter((_, j) => j !== i) })}>
+              Remove field
             </button>
           </div>
         ))}

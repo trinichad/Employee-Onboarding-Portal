@@ -30,7 +30,7 @@ export default function OrgRequestNew() {
         <div className="card"><div className="card-body text-sm text-slate-600">No form configured for this organization yet.</div></div>
       ) : (
         <div className="space-y-6">
-          <FormRenderer schema={form.data!.schema} values={values} onChange={setValues} />
+          <FormRenderer schema={form.data!.schema} values={values} onChange={setValues} orgSlug={orgSlug} />
 
           <div className="flex justify-end gap-2">
             <button className="btn-secondary" onClick={() => nav(-1)}>Cancel</button>

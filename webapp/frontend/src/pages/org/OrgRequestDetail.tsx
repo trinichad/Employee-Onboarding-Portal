@@ -195,7 +195,7 @@ export default function OrgRequestDetail() {
 
       {form.data && <RequestSummary schema={form.data.schema} values={values} notes={notes} supportMessage={supportMessage} />}
 
-      {form.data && <FormRenderer schema={form.data.schema} values={values} onChange={setValues} disabled={!canEditNotes} />}
+      {form.data && <FormRenderer schema={form.data.schema} values={values} onChange={setValues} disabled={!canEditNotes} orgSlug={orgSlug} />}
 
       {canEditNotes && (
         <div className="card mt-6">
