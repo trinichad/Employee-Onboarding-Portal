@@ -34,7 +34,6 @@ export default function AdminSettings() {
   const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS);
   const [publicBaseUrl, setPublicBaseUrl] = useState("");
   const [backendPort, setBackendPort] = useState<number>(8000);
-  const [frontendPort, setFrontendPort] = useState<number>(5173);
 
   useEffect(() => {
     if (settings.data) {
@@ -48,7 +47,6 @@ export default function AdminSettings() {
         : DEFAULT_COLUMNS);
       setPublicBaseUrl(settings.data.public_base_url || "");
       setBackendPort(settings.data.backend_port ?? 8000);
-      setFrontendPort(settings.data.frontend_port ?? 5173);
     }
   }, [settings.data]);
 
@@ -62,7 +60,6 @@ export default function AdminSettings() {
       default_dashboard_columns: columns,
       public_base_url: publicBaseUrl.trim(),
       backend_port: Number(backendPort) || 8000,
-      frontend_port: Number(frontendPort) || 5173,
     }),
     onSuccess: () => {
       toast.success("Platform settings saved");
@@ -165,8 +162,8 @@ export default function AdminSettings() {
               </div>
               <div className="text-slate-600 dark:text-slate-300">Public base URL</div>
               <div className="text-right"><code className="text-xs break-all">{settings.data?.public_base_url || "—"}</code></div>
-              <div className="text-slate-600 dark:text-slate-300">Backend / Frontend</div>
-              <div className="text-right"><code className="text-xs">:{settings.data?.backend_port} / :{settings.data?.frontend_port}</code></div>
+              <div className="text-slate-600 dark:text-slate-300">Listening on</div>
+              <div className="text-right"><code className="text-xs">:{settings.data?.backend_port}</code></div>
             </div>
             <p className="help pt-2">
               SMTP settings below are stored in the database and take precedence over
@@ -187,19 +184,14 @@ export default function AdminSettings() {
                 <p className="help">Used in invite, password-reset, and approval emails. Include the scheme (http/https) and any port if non-standard. Takes effect immediately.</p>
               </div>
               <div>
-                <label className="label">Backend port</label>
+                <label className="label">Listen port</label>
                 <input className="input" type="number" min={1} max={65535} value={backendPort} onChange={(e) => setBackendPort(Number(e.target.value))} />
-                <p className="help">Uvicorn listen port (127.0.0.1).</p>
+                <p className="help">Single port serves both the API and the web UI.</p>
               </div>
-              <div>
-                <label className="label">Frontend port</label>
-                <input className="input" type="number" min={1} max={65535} value={frontendPort} onChange={(e) => setFrontendPort(Number(e.target.value))} />
-                <p className="help">Forward this port for public access.</p>
-              </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400 self-end pb-1">
+              <div className="md:col-span-2 text-xs text-slate-500 dark:text-slate-400 self-end pb-1">
                 <div className="font-semibold text-slate-600 dark:text-slate-300 mb-0.5">Restart required</div>
-                <div>Linux: <code>itrequest.sh restart</code></div>
-                <div>Dev: re-run <code>npm run dev</code> &amp; <code>uvicorn</code></div>
+                <div>Linux: <code>sudo systemctl restart itrequest-backend</code></div>
+                <div>Dev: re-run <code>uvicorn</code></div>
               </div>
             </div>
             {settings.data && (

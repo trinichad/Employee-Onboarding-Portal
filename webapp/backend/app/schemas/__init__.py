@@ -290,7 +290,6 @@ class PlatformSettingsOut(SmtpConfigOut):
     smtp_from: str = ""             # env SMTP_FROM (legacy/fallback)
     public_base_url: str = ""
     backend_port: int = 8000
-    frontend_port: int = 5173
     runtime_env_path: str = ""
     runtime_env_writable: bool = False
 
@@ -304,7 +303,6 @@ class PlatformSettingsUpdate(SmtpConfigUpdate):
     timezone: Optional[str] = Field(default=None, max_length=64)
     public_base_url: Optional[str] = Field(default=None, max_length=512)
     backend_port: Optional[int] = Field(default=None, ge=1, le=65535)
-    frontend_port: Optional[int] = Field(default=None, ge=1, le=65535)
 
 
 class OrganizationSmtpOut(SmtpConfigOut):

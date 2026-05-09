@@ -76,9 +76,8 @@ That script:
 3. copies `webapp/backend/.env.example` → `.env` (only if missing),
 4. seeds the bootstrap Global Admin (prints the email/password — change it after first login),
 5. builds the frontend (`npm run build`),
-6. installs and enables two systemd units so the app comes up on boot:
-   - `itrequest-backend.service`  → uvicorn on `127.0.0.1:8000`
-   - `itrequest-frontend.service` → vite preview on `0.0.0.0:5173`
+6. installs and enables a single systemd unit so the app comes up on boot:
+   - `itrequest-backend.service` → uvicorn on `0.0.0.0:8000`, serving **both** the API (`/api/*`) and the built React SPA (everything else)
 
 After install, edit `webapp/backend/.env` (set `JWT_SECRET`, `JWT_REFRESH_SECRET`,
 `PUBLIC_BASE_URL`, `CORS_ORIGINS`, SMTP, etc.) and restart:
@@ -87,12 +86,11 @@ After install, edit `webapp/backend/.env` (set `JWT_SECRET`, `JWT_REFRESH_SECRET
 sudo systemctl restart itrequest-backend
 ```
 
-> For real production put nginx/Caddy in front of `:5173` and `:8000` with TLS.
-> The included frontend service uses `vite preview` for simplicity.
+> For real production put nginx/Caddy in front of `:8000` with TLS.
 
 ### First-run: create the platform admin
 
-The first time anyone opens `http://<host>:5173/admin/login`, the page detects
+The first time anyone opens `http://<host>:8000/admin/login`, the page detects
 that no admin exists yet and redirects to a one-time setup wizard where you
 type your email + password. After that the wizard endpoint is permanently
 disabled.
@@ -121,16 +119,16 @@ webapp/scripts/itrequest.sh start
 webapp/scripts/itrequest.sh stop
 webapp/scripts/itrequest.sh restart
 webapp/scripts/itrequest.sh status
-webapp/scripts/itrequest.sh logs        # follow backend+frontend journal
+webapp/scripts/itrequest.sh logs        # follow backend journal
 webapp/scripts/itrequest.sh logs 500    # last 500 lines, then follow
 ```
 
 Or talk to systemd directly:
 
 ```bash
-sudo systemctl start    itrequest-backend itrequest-frontend
-sudo systemctl stop     itrequest-backend itrequest-frontend
-sudo systemctl restart  itrequest-backend itrequest-frontend
+sudo systemctl start    itrequest-backend
+sudo systemctl stop     itrequest-backend
+sudo systemctl restart  itrequest-backend
 sudo systemctl status   itrequest-backend
 sudo journalctl -u itrequest-backend -f
 ```
@@ -166,7 +164,7 @@ cd /path/to/Employee-Onboarding-Portal
 git pull
 cd webapp/backend && source .venv/bin/activate && pip install -r requirements.txt && deactivate
 cd ../frontend && npm install && npm run build
-sudo systemctl restart itrequest-backend itrequest-frontend
+sudo systemctl restart itrequest-backend
 ```
 
 ## Project layout
