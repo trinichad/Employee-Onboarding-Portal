@@ -71,8 +71,12 @@ export default function AdminSettings() {
 
   const restart = useMutation({
     mutationFn: () => adminApi.restart(),
-    onSuccess: () => {
-      toast.success("Restart scheduled — server will be back in a few seconds");
+    onSuccess: (data) => {
+      if (data.status === "noop") {
+        toast(data.message || "Dev mode — restart manually", { icon: "ℹ️" });
+      } else {
+        toast.success("Restart scheduled — server will be back in a few seconds");
+      }
     },
     onError: (e) => toast.error(apiError(e)),
   });

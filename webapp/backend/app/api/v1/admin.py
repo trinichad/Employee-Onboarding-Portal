@@ -607,10 +607,11 @@ def restart_service(current: CurrentUser = Depends(require_global_admin)) -> dic
 
     systemctl = shutil.which("systemctl")
     if not systemctl or not os.path.exists("/run/systemd/system"):
-        raise HTTPException(
-            status_code=501,
-            detail="systemd not available on this host; restart manually.",
-        )
+        return {
+            "status": "noop",
+            "service": "itrequest-backend",
+            "message": "Dev mode (no systemd) — restart uvicorn manually for port changes to take effect.",
+        }
     sudo = shutil.which("sudo") or "/usr/bin/sudo"
     # Detach so the parent process can return the response before dying.
     try:
