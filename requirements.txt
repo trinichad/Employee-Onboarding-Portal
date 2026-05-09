@@ -1,0 +1,3 @@
+pyinstaller==6.15.0
+tkcalendar==1.6.1
+ttkbootstrap==1.14.1

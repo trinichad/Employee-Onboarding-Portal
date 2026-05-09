@@ -1,0 +1,7 @@
+# Alembic migrations directory.
+# To generate the initial migration:
+#   alembic revision --autogenerate -m "init"
+#   alembic upgrade head
+#
+# The app also auto-creates tables on first startup via SQLAlchemy create_all
+# (see app/main.py lifespan), so Alembic is optional for local development.

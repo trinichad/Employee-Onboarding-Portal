@@ -1,0 +1,13 @@
+from fastapi import APIRouter
+
+from app.api.v1 import admin, auth, config, forms, me, orgs, requests as requests_router, users
+
+api_router = APIRouter(prefix="/api/v1")
+api_router.include_router(auth.router)
+api_router.include_router(me.router)
+api_router.include_router(config.router)
+api_router.include_router(admin.router)
+api_router.include_router(orgs.router)
+api_router.include_router(users.router)
+api_router.include_router(forms.router)
+api_router.include_router(requests_router.router)

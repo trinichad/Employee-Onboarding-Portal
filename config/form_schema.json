@@ -1,0 +1,190 @@
+{
+  "form_name": "IT Request Form",
+  "request_types": [
+    "New Hire",
+    "Termination",
+    "Promotion",
+    "Rehire",
+    "New Shared Mailbox",
+    "New Distribution Group"
+  ],
+  "fields": [
+    {
+      "id": "effective_date",
+      "label": "Effective Date",
+      "description": "Date the change becomes active (MM-DD-YYYY).",
+      "type": "date"
+    },
+    {
+      "id": "name",
+      "label": "Name",
+      "description": "Employee full legal name.",
+      "type": "text"
+    },
+    {
+      "id": "cell_phone",
+      "label": "Cell Phone",
+      "description": "Employee mobile number.",
+      "type": "text"
+    },
+    {
+      "id": "address",
+      "label": "Address",
+      "description": "Employee home address.",
+      "type": "text"
+    },
+    {
+      "id": "property",
+      "label": "Property",
+      "description": "Property/site assignment.",
+      "type": "text"
+    },
+    {
+      "id": "department",
+      "label": "Department",
+      "description": "Business unit or department.",
+      "type": "text"
+    },
+    {
+      "id": "sub_department",
+      "label": "Sub-Department",
+      "description": "Team or sub-group inside department.",
+      "type": "text"
+    },
+    {
+      "id": "title",
+      "label": "Title",
+      "description": "Job title.",
+      "type": "text"
+    },
+    {
+      "id": "manager",
+      "label": "Manager",
+      "description": "Direct manager name.",
+      "type": "text"
+    }
+  ],
+  "groups": [
+    {
+      "id": "system_web",
+      "title": "System / Web Access",
+      "enabled": true,
+      "items": [
+        {
+          "id": "vpn_access",
+          "label": "VPN Access",
+          "description": "Enable or disable VPN access."
+        }
+      ]
+    },
+    {
+      "id": "email_groups",
+      "title": "Email Groups",
+      "enabled": true,
+      "items": [
+        {
+          "id": "everyone",
+          "label": "everyone@yourdomain.com",
+          "description": "Add/remove this email group."
+        }
+      ]
+    },
+    {
+      "id": "shared_mailbox",
+      "title": "Shared Mailbox",
+      "enabled": true,
+      "items": [
+        {
+          "id": "shared_mailbox_access",
+          "label": "Shared Mailbox Access",
+          "description": "Enable or disable shared mailbox access."
+        }
+      ]
+    },
+    {
+      "id": "sharepoint_sites",
+      "title": "SharePoint Sites",
+      "enabled": true,
+      "items": [
+        {
+          "id": "sharepoint_site_access",
+          "label": "SharePoint Site Access",
+          "description": "Enable or disable SharePoint site access."
+        }
+      ]
+    },
+    {
+      "id": "google_drives",
+      "title": "Google Drives",
+      "enabled": true,
+      "items": [
+        {
+          "id": "google_drive_access",
+          "label": "Google Drive Access",
+          "description": "Enable or disable Google Drive access."
+        }
+      ]
+    },
+    {
+      "id": "printer_access",
+      "title": "Printer Access",
+      "enabled": true,
+      "items": [
+        {
+          "id": "printer_access",
+          "label": "Printer Access",
+          "description": "Enable or disable printer access."
+        }
+      ]
+    },
+    {
+      "id": "property_network",
+      "title": "Property Network Access",
+      "enabled": true,
+      "items": [
+        {
+          "id": "property_security",
+          "label": "Property Security Group",
+          "description": "Enable or disable this security group."
+        },
+        {
+          "id": "property_om_security",
+          "label": "Property OM Security Group",
+          "description": "Enable or disable this security group."
+        },
+        {
+          "id": "property_directors_security",
+          "label": "Property Directors Security Group",
+          "description": "Enable or disable this security group."
+        },
+        {
+          "id": "floating_security",
+          "label": "Floating Security Group",
+          "description": "Enable or disable this security group."
+        }
+      ]
+    },
+    {
+      "id": "property_mailbox",
+      "title": "Property Mailbox Access",
+      "enabled": true,
+      "items": [
+        {
+          "id": "general_email",
+          "label": "General Email",
+          "description": "Enable or disable this mailbox."
+        },
+        {
+          "id": "maintenance_email",
+          "label": "Maintenance Email",
+          "description": "Enable or disable this mailbox."
+        },
+        {
+          "id": "concierge_email",
+          "label": "Concierge Email",
+          "description": "Enable or disable this mailbox."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,795 @@
+from __future__ import annotations
+
+import secrets
+from datetime import datetime, timedelta, timezone
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, File
+from slugify import slugify
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.core.deps import CurrentUser, require_global_admin
+from app.core.security import hash_password
+from app.db.session import get_db
+from app.models import (
+    AuditLog,
+    EmployeeRequest,
+    FormSchema,
+    InviteToken,
+    Organization,
+    PasswordResetToken,
+    PlatformSetting,
+    Role,
+    User,
+)
+from app.schemas import (
+    AdminInviteUser,
+    AdminSetPassword,
+    AuditOut,
+    EmployeeRequestOut,
+    OrganizationCreate,
+    OrganizationDelete,
+    OrganizationOut,
+    OrganizationSmtpOut,
+    OrganizationSmtpUpdate,
+    OrganizationUpdate,
+    PlatformSettingsOut,
+    PlatformSettingsUpdate,
+    UserCreateInvite,
+    UserOut,
+)
+from app.services.audit import audit
+from app.services.default_form import DEFAULT_FORM_SCHEMA
+from app.services.email import invite_email
+from app.services.sender import org_sender, org_smtp
+
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_global_admin)])
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _get_or_create_settings(db: Session) -> PlatformSetting:
+    row = db.get(PlatformSetting, 1)
+    if not row:
+        row = PlatformSetting(id=1)
+        db.add(row)
+        db.flush()
+    return row
+
+
+def _settings_payload(row: PlatformSetting) -> PlatformSettingsOut:
+    smtp_host = (row.smtp_host or "").strip()
+    return PlatformSettingsOut(
+        platform_name=row.platform_name,
+        default_support_email=row.default_support_email or "",
+        default_from_email=row.default_from_email or "",
+        default_from_name=row.default_from_name or "",
+        default_dashboard_columns=row.default_dashboard_columns,
+        timezone=row.timezone or "UTC",
+        smtp_host=smtp_host,
+        smtp_port=int(row.smtp_port or 0),
+        smtp_security=row.smtp_security or "",
+        smtp_auth=row.smtp_auth or "",
+        smtp_username=row.smtp_username or "",
+        smtp_password_set=bool(row.smtp_password),
+        smtp_configured=bool(smtp_host or settings.SMTP_HOST),
+        smtp_from=settings.SMTP_FROM,
+        public_base_url=settings.PUBLIC_BASE_URL,
+    )
+
+
+def _apply_smtp(target, body, *, fields_set: set[str]) -> None:
+    """Apply SmtpConfigUpdate fields to an ORM row.
+
+    smtp_password semantics: absent → unchanged; "" → cleared; non-empty → set.
+    """
+    if body.smtp_host is not None:
+        target.smtp_host = body.smtp_host.strip()
+    if body.smtp_port is not None:
+        target.smtp_port = int(body.smtp_port)
+    if body.smtp_security is not None:
+        v = (body.smtp_security or "").strip().lower()
+        if v and v not in ("none", "starttls", "ssl", "http_api"):
+            raise HTTPException(400, "smtp_security must be one of: none, starttls, ssl, http_api")
+        target.smtp_security = v
+    if body.smtp_auth is not None:
+        v = (body.smtp_auth or "").strip().lower()
+        if v and v not in ("none", "auto", "plain", "login", "cram_md5"):
+            raise HTTPException(400, "smtp_auth must be one of: none, auto, plain, login, cram_md5")
+        target.smtp_auth = v
+    if body.smtp_username is not None:
+        target.smtp_username = body.smtp_username.strip()
+    if "smtp_password" in fields_set:
+        # Strip whitespace/newlines from copy-paste; allow empty string to clear.
+        target.smtp_password = (body.smtp_password or "").strip()
+
+
+def _org_smtp_payload(org: Organization) -> OrganizationSmtpOut:
+    return OrganizationSmtpOut(
+        organization_id=org.id,
+        smtp_host=org.smtp_host or "",
+        smtp_port=int(org.smtp_port or 0),
+        smtp_security=org.smtp_security or "",
+        smtp_auth=org.smtp_auth or "",
+        smtp_username=org.smtp_username or "",
+        smtp_password_set=bool(org.smtp_password),
+    )
+
+
+# ---------- Organizations ----------
+@router.get("/organizations", response_model=List[OrganizationOut])
+def list_orgs(db: Session = Depends(get_db)) -> List[OrganizationOut]:
+    return [OrganizationOut.model_validate(o) for o in db.query(Organization).order_by(Organization.name).all()]
+
+
+@router.post("/organizations", response_model=OrganizationOut, status_code=201)
+def create_org(
+    body: OrganizationCreate,
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_global_admin),
+) -> OrganizationOut:
+    slug = slugify(body.slug or body.name)
+    if not slug:
+        raise HTTPException(status_code=400, detail="Invalid slug")
+    if db.query(Organization).filter(Organization.slug == slug).first():
+        raise HTTPException(status_code=409, detail="Slug already taken")
+    ps = _get_or_create_settings(db)
+    org = Organization(
+        slug=slug,
+        name=body.name.strip(),
+        branding=body.branding or {},
+        support_email=ps.default_support_email or "",
+        from_email=ps.default_from_email or "",
+        from_name=ps.default_from_name or "",
+        dashboard_columns=list(ps.default_dashboard_columns) if ps.default_dashboard_columns else None,
+    )
+    db.add(org)
+    db.flush()
+    if body.seed_default_form:
+        db.add(FormSchema(organization_id=org.id, version=1, is_active=True, schema=DEFAULT_FORM_SCHEMA,
+                          created_by_id=current.user.id))
+    audit(db, actor_id=current.user.id, action="org.create", organization_id=org.id,
+          target_type="organization", target_id=org.id, meta={"name": org.name})
+    db.commit()
+    db.refresh(org)
+    return OrganizationOut.model_validate(org)
+
+
+@router.patch("/organizations/{org_id}", response_model=OrganizationOut)
+def update_org(
+    org_id: int,
+    body: OrganizationUpdate,
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_global_admin),
+) -> OrganizationOut:
+    org = db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    if body.name is not None:
+        org.name = body.name.strip()
+    if body.is_active is not None:
+        org.is_active = body.is_active
+    if body.branding is not None:
+        org.branding = body.branding
+    audit(db, actor_id=current.user.id, action="org.update", organization_id=org.id,
+          target_type="organization", target_id=org.id)
+    db.commit()
+    db.refresh(org)
+    return OrganizationOut.model_validate(org)
+
+
+@router.post("/organizations/{org_id}/delete")
+def delete_org(
+    org_id: int,
+    body: OrganizationDelete,
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_global_admin),
+) -> dict:
+    org = db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    if body.confirm_name.strip() != org.name:
+        raise HTTPException(status_code=400, detail="Confirmation does not match organization name")
+    name = org.name
+    db.delete(org)
+    audit(db, actor_id=current.user.id, action="org.delete", organization_id=None,
+          target_type="organization", target_id=org_id, meta={"name": name})
+    db.commit()
+    return {"deleted": True, "id": org_id, "name": name}
+
+
+# ---------- Users (cross-org) ----------
+@router.get("/users", response_model=List[UserOut])
+def list_all_users(
+    db: Session = Depends(get_db),
+    organization_id: Optional[int] = Query(None),
+    role: Optional[Role] = Query(None),
+) -> List[UserOut]:
+    q = db.query(User)
+    if organization_id is not None:
+        q = q.filter(User.organization_id == organization_id)
+    if role is not None:
+        q = q.filter(User.role == role)
+    return [UserOut.model_validate(u) for u in q.order_by(User.created_at.desc()).all()]
+
+
+@router.post("/organizations/{org_id}/client-admins", response_model=UserOut, status_code=201)
+def invite_client_admin(
+    org_id: int,
+    body: UserCreateInvite,
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_global_admin),
+) -> UserOut:
+    org = db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    email = body.email.lower()
+    if db.query(User).filter(User.email == email, User.organization_id == org.id).first():
+        raise HTTPException(status_code=409, detail="User already exists in this organization")
+    user = User(
+        email=email, full_name=body.full_name, role=Role.CLIENT_ADMIN,
+        organization_id=org.id, is_active=True, password_hash=None,
+    )
+    db.add(user)
+    db.flush()
+    token = secrets.token_urlsafe(32)
+    db.add(InviteToken(
+        token=token, email=email, organization_id=org.id, role=Role.CLIENT_ADMIN,
+        invited_by_id=current.user.id, expires_at=_now() + timedelta(days=7),
+    ))
+    addr, name = org_sender(db, org)
+    try:
+        invite_email(email, org.name,
+                     f"{settings.PUBLIC_BASE_URL}/{org.slug}/accept?token={token}",
+                     from_addr=addr, from_name=name, smtp=org_smtp(db, org),
+                     raise_on_error=True)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"Invite email could not be delivered: {exc}. "
+                "Verify SMTP and From address in Settings, then try again."
+            ),
+        )
+    audit(db, actor_id=current.user.id, action="org.invite_client_admin", organization_id=org.id,
+          target_type="user", target_id=user.id)
+    db.commit()
+    db.refresh(user)
+    return UserOut.model_validate(user)
+
+
+@router.post("/users/{user_id}/reset-password", status_code=204, response_class=Response)
+def force_reset_password(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_global_admin),
+):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    token = secrets.token_urlsafe(32)
+    db.add(PasswordResetToken(token=token, user_id=user.id, expires_at=_now() + timedelta(hours=2)))
+    org_path = ""
+    org_obj: Optional[Organization] = None
+    if user.organization_id:
+        org_obj = db.get(Organization, user.organization_id)
+        if org_obj:
+            org_path = f"/{org_obj.slug}"
+    from app.services.email import reset_email
+    sender_addr, sender_name = org_sender(db, org_obj) if org_obj else ("", "")
+    reset_email(user.email,
+                f"{settings.PUBLIC_BASE_URL}{org_path}/reset?token={token}",
+                from_addr=sender_addr, from_name=sender_name,
+                smtp=org_smtp(db, org_obj))
+    audit(db, actor_id=current.user.id, action="admin.force_password_reset",
+          organization_id=user.organization_id, target_type="user", target_id=user.id)
+    db.commit()
+
+
+@router.post("/invites", response_model=UserOut, status_code=201)
+def admin_invite_user(
+    body: AdminInviteUser,
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_global_admin),
+) -> UserOut:
+    """Invite a user of any role. organization_id required unless role==global_admin."""
+    org: Optional[Organization] = None
+    if body.role == Role.GLOBAL_ADMIN:
+        org_id = None
+    else:
+        if not body.organization_id:
+            raise HTTPException(status_code=400, detail="organization_id is required for non-global-admin roles")
+        org = db.get(Organization, body.organization_id)
+        if not org:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        org_id = org.id
+
+    email = body.email.lower()
+    existing_q = db.query(User).filter(User.email == email)
+    if org_id is None:
+        existing_q = existing_q.filter(User.organization_id.is_(None))
+    else:
+        existing_q = existing_q.filter(User.organization_id == org_id)
+    if existing_q.first():
+        raise HTTPException(status_code=409, detail="User already exists")
+
+    user = User(
+        email=email, full_name=body.full_name, role=body.role,
+        organization_id=org_id, is_active=True, password_hash=None,
+    )
+    db.add(user)
+    db.flush()
+    token = secrets.token_urlsafe(32)
+    db.add(InviteToken(
+        token=token, email=email, organization_id=org_id, role=body.role,
+        invited_by_id=current.user.id, expires_at=_now() + timedelta(days=7),
+    ))
+    if org:
+        invite_url = f"{settings.PUBLIC_BASE_URL}/{org.slug}/accept?token={token}"
+        org_name = org.name
+    else:
+        invite_url = f"{settings.PUBLIC_BASE_URL}/accept?token={token}"
+        org_name = None
+    # Always resolve through the platform fallback chain (org_sender / org_smtp
+    # both handle org=None by falling back to platform settings, then env).
+    addr, name = org_sender(db, org)
+    smtp = org_smtp(db, org)
+    try:
+        invite_email(email, org_name, invite_url, from_addr=addr, from_name=name,
+                     smtp=smtp, raise_on_error=True)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"User created in memory but invite email could not be delivered: {exc}. "
+                "Verify Platform SMTP and From address in Settings, then try again."
+            ),
+        )
+    audit(db, actor_id=current.user.id, action="admin.invite_user",
+          organization_id=org_id, target_type="user", target_id=user.id)
+    db.commit()
+    db.refresh(user)
+    return UserOut.model_validate(user)
+
+
+@router.post("/users/{user_id}/password", status_code=204, response_class=Response)
+def admin_set_password(
+    user_id: int,
+    body: AdminSetPassword,
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_global_admin),
+):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.password_hash = hash_password(body.new_password)
+    user.is_active = True
+    audit(db, actor_id=current.user.id, action="admin.set_password",
+          organization_id=user.organization_id, target_type="user", target_id=user.id)
+    db.commit()
+
+
+@router.delete("/users/{user_id}", status_code=204, response_class=Response)
+def admin_delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_global_admin),
+):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.id == current.user.id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account")
+    org_id = user.organization_id
+    db.delete(user)
+    audit(db, actor_id=current.user.id, action="admin.delete_user",
+          organization_id=org_id, target_type="user", target_id=user_id)
+    db.commit()
+
+
+@router.post("/users/{user_id}/totp/reset", status_code=204, response_class=Response)
+def admin_reset_user_totp(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_global_admin),
+):
+    """Clear a user's 2FA enrollment so they're forced to re-enroll on next login.
+
+    Useful when a user has lost access to their authenticator app and can no
+    longer sign in. For accounts where 2FA is mandatory (admins) the next
+    login will route them through the forced setup flow.
+    """
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.totp_secret_enc = None
+    user.totp_pending_secret_enc = None
+    user.totp_enrolled_at = None
+    audit(db, actor_id=current.user.id, action="admin.totp_reset",
+          organization_id=user.organization_id, target_type="user", target_id=user.id)
+    db.commit()
+
+
+# ---------- Cross-org views ----------
+@router.get("/requests", response_model=List[EmployeeRequestOut])
+def list_all_requests(
+    db: Session = Depends(get_db),
+    organization_id: Optional[int] = Query(None),
+    limit: int = Query(100, le=500),
+) -> List[EmployeeRequestOut]:
+    q = db.query(EmployeeRequest)
+    if organization_id is not None:
+        q = q.filter(EmployeeRequest.organization_id == organization_id)
+    rows = q.order_by(EmployeeRequest.created_at.desc()).limit(limit).all()
+    return [EmployeeRequestOut.model_validate(r) for r in rows]
+
+
+@router.get("/requests/{request_id}")
+def get_request_detail(request_id: int, db: Session = Depends(get_db)) -> dict:
+    """Read-only request view for global admins. Returns the request plus the
+    org's active form schema and submitter info, so the admin UI can render
+    a labeled summary without needing the org-scoped endpoints."""
+    row = db.get(EmployeeRequest, request_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    org = db.get(Organization, row.organization_id)
+    submitter = db.get(User, row.submitter_id) if row.submitter_id else None
+    schema_row = (
+        db.query(FormSchema)
+        .filter(FormSchema.organization_id == row.organization_id, FormSchema.is_active.is_(True))
+        .order_by(FormSchema.version.desc())
+        .first()
+    )
+    return {
+        "request": EmployeeRequestOut.model_validate(row).model_dump(mode="json"),
+        "organization": {"id": org.id, "name": org.name, "slug": org.slug} if org else None,
+        "submitter": (
+            {"id": submitter.id, "full_name": submitter.full_name, "email": submitter.email}
+            if submitter else None
+        ),
+        "schema": schema_row.schema if schema_row else None,
+    }
+
+
+@router.get("/audit", response_model=List[AuditOut])
+def list_audit(
+    db: Session = Depends(get_db),
+    organization_id: Optional[int] = Query(None),
+    limit: int = Query(200, le=1000),
+) -> List[AuditOut]:
+    q = db.query(AuditLog)
+    if organization_id is not None:
+        q = q.filter(AuditLog.organization_id == organization_id)
+    rows = q.order_by(AuditLog.created_at.desc()).limit(limit).all()
+    actor_ids = {r.actor_id for r in rows if r.actor_id is not None}
+    actors: dict[int, User] = {}
+    if actor_ids:
+        for u in db.query(User).filter(User.id.in_(actor_ids)).all():
+            actors[u.id] = u
+    out: List[AuditOut] = []
+    for a in rows:
+        item = AuditOut.model_validate(a)
+        u = actors.get(a.actor_id) if a.actor_id is not None else None
+        if u is not None:
+            item.actor_email = u.email
+            item.actor_name = u.full_name or None
+        out.append(item)
+    return out
+
+
+@router.get("/stats")
+def platform_stats(db: Session = Depends(get_db)) -> dict:
+    return {
+        "organizations": db.query(Organization).count(),
+        "users": db.query(User).count(),
+        "requests": db.query(EmployeeRequest).count(),
+    }
+
+
+# ---------- Platform Settings ----------
+@router.get("/settings", response_model=PlatformSettingsOut)
+def get_platform_settings(db: Session = Depends(get_db)) -> PlatformSettingsOut:
+    row = _get_or_create_settings(db)
+    db.commit()
+    return _settings_payload(row)
+
+
+@router.patch("/settings", response_model=PlatformSettingsOut)
+def update_platform_settings(
+    body: PlatformSettingsUpdate,
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_global_admin),
+) -> PlatformSettingsOut:
+    row = _get_or_create_settings(db)
+    if body.platform_name is not None:
+        row.platform_name = body.platform_name.strip() or row.platform_name
+    if body.default_support_email is not None:
+        row.default_support_email = body.default_support_email.strip()
+    if body.default_from_email is not None:
+        row.default_from_email = body.default_from_email.strip()
+    if body.default_from_name is not None:
+        row.default_from_name = body.default_from_name.strip()
+    if body.default_dashboard_columns is not None:
+        row.default_dashboard_columns = list(body.default_dashboard_columns) or None
+    if body.timezone is not None:
+        tz_name = (body.timezone or "").strip() or "UTC"
+        try:
+            from zoneinfo import ZoneInfo
+            ZoneInfo(tz_name)
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"Unknown timezone: {tz_name}")
+        row.timezone = tz_name
+    _apply_smtp(row, body, fields_set=body.model_fields_set)
+    audit(db, actor_id=current.user.id, action="platform.settings_update",
+          organization_id=None, target_type="platform_settings", target_id=row.id)
+    db.commit()
+    db.refresh(row)
+    return _settings_payload(row)
+
+
+# ---------- Per-organization SMTP override (global admin only) ----------
+@router.get("/organizations/{org_id}/smtp", response_model=OrganizationSmtpOut)
+def get_org_smtp(org_id: int, db: Session = Depends(get_db)) -> OrganizationSmtpOut:
+    org = db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(404, "Organization not found")
+    return _org_smtp_payload(org)
+
+
+@router.patch("/organizations/{org_id}/smtp", response_model=OrganizationSmtpOut)
+def update_org_smtp(
+    org_id: int,
+    body: OrganizationSmtpUpdate,
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_global_admin),
+) -> OrganizationSmtpOut:
+    org = db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(404, "Organization not found")
+    _apply_smtp(org, body, fields_set=body.model_fields_set)
+    audit(db, actor_id=current.user.id, action="org.smtp_update",
+          organization_id=org.id, target_type="organization", target_id=org.id)
+    db.commit()
+    db.refresh(org)
+    return _org_smtp_payload(org)
+
+
+@router.post("/smtp-test")
+def smtp_test_endpoint(
+    body: dict,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Test SMTP connectivity and (optionally) deliver a test message.
+
+    Body: {scope: 'platform'|'org', org_id?: int, send_to?: str}.
+    Uses the persisted (saved) settings; save before testing.
+    """
+    from app.services.email import send_email, smtp_test
+    from app.services.sender import org_smtp, org_sender
+    body = body or {}
+    scope = body.get("scope", "platform")
+    send_to = (body.get("send_to") or "").strip()
+    org: Optional[Organization] = None
+    if scope == "org":
+        org = db.get(Organization, int(body.get("org_id") or 0))
+        if not org:
+            raise HTTPException(404, "Organization not found")
+        cfg = org_smtp(db, org)
+    else:
+        cfg = org_smtp(db, None)
+    ok, msg = smtp_test(cfg)
+    sent = False
+    send_msg = ""
+    if ok and send_to:
+        from_addr, from_name = org_sender(db, org)
+        if not from_addr:
+            from_addr = settings.SMTP_FROM
+        if not from_addr:
+            sent = False
+            send_msg = (
+                "No From address is configured. Set the platform 'Default sender email' "
+                "(or, for an org-scoped test, the org's 'Sender email') and save before testing. "
+                "SMTP2GO requires the From address to be a verified sender on your account."
+            )
+        else:
+            try:
+                send_email(
+                    to=send_to,
+                    subject="SMTP test from Employee Onboarding Portal",
+                    body=(
+                        "This is a test message confirming the configured SMTP relay can deliver mail.\n\n"
+                        f"Host: {cfg.host}\nPort: {cfg.port}\nSecurity: {cfg.security}\n"
+                        f"Auth: {cfg.auth}\nUsername: {cfg.username or '(none)'}\n"
+                        f"From: {from_name + ' <' + from_addr + '>' if from_name else from_addr}\n"
+                    ),
+                    from_addr=from_addr,
+                    from_name=from_name,
+                    smtp=cfg,
+                    raise_on_error=True,
+                )
+                sent = True
+                send_msg = (
+                    f"Test message accepted by {cfg.host} for delivery to {send_to}. "
+                    f"Check the inbox (and spam). If it never arrives, the From address "
+                    f"({from_addr}) is most likely not a verified sender on your relay."
+                )
+            except Exception as exc:  # noqa: BLE001
+                base = f"send failed: {type(exc).__name__}: {exc}"
+                hint = ""
+                text = str(exc).lower()
+                if "relay access denied" in text or "please authenticate" in text:
+                    hint = (
+                        " — The relay accepted the AUTH but rejected the actual send. "
+                        "Common SMTP2GO causes (in order of likelihood): "
+                        "(1) you're using your account login password instead of the SMTP user's password — "
+                        "create/copy one under Settings → Users → SMTP Users; "
+                        "(2) the SMTP user has 'Allowed Sender Domains' or 'Allowed Sender IPs' set that exclude "
+                        f"{from_addr or '(your From)'} or this server's IP; "
+                        "(3) a sending limit / monthly quota was hit, or the account is paused. "
+                        "Check the SMTP2GO dashboard 'Activity' log — the rejected message will show the exact reason."
+                    )
+                send_msg = base + hint
+    resolved_from_addr, resolved_from_name = org_sender(db, org)
+    return {
+        "ok": ok,
+        "message": msg,
+        "host": cfg.host,
+        "port": cfg.port,
+        "security": cfg.security,
+        "auth": cfg.auth,
+        "username": cfg.username,
+        "password_length": len(cfg.password or ""),
+        "usable": cfg.usable,
+        "from_addr": resolved_from_addr or settings.SMTP_FROM or "",
+        "from_name": resolved_from_name or "",
+        "sent": sent,
+        "send_message": send_msg,
+    }
+
+
+# ---------- Database backup / restore (SQLite) ----------
+
+def _sqlite_path() -> str:
+    """Resolve the SQLite file path from DATABASE_URL or raise 400."""
+    url = settings.DATABASE_URL
+    if not url.startswith("sqlite"):
+        raise HTTPException(
+            status_code=400,
+            detail="Database backup/restore is only supported for SQLite deployments.",
+        )
+    # sqlite:///relative/path or sqlite:////absolute/path
+    prefix = "sqlite:///"
+    if not url.startswith(prefix):
+        raise HTTPException(status_code=400, detail="Unsupported SQLite URL")
+    path = url[len(prefix):]
+    import os
+    if not os.path.isabs(path):
+        # Relative to backend working dir at startup.
+        path = os.path.abspath(path)
+    return path
+
+
+@router.get("/backup")
+def admin_backup_database(
+    current: CurrentUser = Depends(require_global_admin),
+    db: Session = Depends(get_db),
+):
+    """Download a consistent snapshot of the SQLite database.
+
+    Uses the SQLite Online Backup API so writes during the snapshot are safe.
+    The file is returned with a timestamped name; restoring it via
+    :func:`admin_restore_database` overwrites the live database.
+    """
+    import os
+    import sqlite3
+    import tempfile
+    from datetime import datetime
+    from fastapi.responses import FileResponse
+    from starlette.background import BackgroundTask
+
+    src_path = _sqlite_path()
+    if not os.path.exists(src_path):
+        raise HTTPException(status_code=404, detail="Database file not found")
+
+    # Backup to a temp file using SQLite's backup API (handles concurrent writes).
+    tmp_fd, tmp_path = tempfile.mkstemp(prefix="itp-backup-", suffix=".sqlite")
+    os.close(tmp_fd)
+    try:
+        src = sqlite3.connect(src_path)
+        dst = sqlite3.connect(tmp_path)
+        with dst:
+            src.backup(dst)
+        dst.close()
+        src.close()
+    except Exception as exc:  # pragma: no cover - defensive
+        try: os.unlink(tmp_path)
+        except OSError: pass
+        raise HTTPException(status_code=500, detail=f"Backup failed: {exc}")
+
+    audit(db, actor_id=current.user.id, action="admin.db_backup")
+    db.commit()
+
+    fname = f"itp-backup-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.sqlite"
+    return FileResponse(
+        tmp_path,
+        media_type="application/octet-stream",
+        filename=fname,
+        background=BackgroundTask(lambda: (os.path.exists(tmp_path) and os.unlink(tmp_path))),
+    )
+
+
+@router.post("/backup/restore")
+def admin_restore_database(
+    file: UploadFile = File(...),
+    current: CurrentUser = Depends(require_global_admin),
+    db: Session = Depends(get_db),
+):
+    """Replace the live SQLite database with an uploaded backup file.
+
+    The current database is renamed alongside as ``<name>.pre-restore-<ts>``
+    so a botched import can be undone manually. After a successful restore
+    the API process should be restarted; the SQLAlchemy engine is disposed
+    so existing connections are closed.
+    """
+    import os
+    import shutil
+    import sqlite3
+    import tempfile
+    from datetime import datetime
+    from app.db.session import engine
+
+    dst_path = _sqlite_path()
+
+    # Stream upload to a temp file (we don't trust size).
+    tmp_fd, tmp_path = tempfile.mkstemp(prefix="itp-restore-", suffix=".sqlite")
+    os.close(tmp_fd)
+    try:
+        with open(tmp_path, "wb") as out:
+            while True:
+                chunk = file.file.read(1024 * 1024)
+                if not chunk:
+                    break
+                out.write(chunk)
+
+        # Validate it's actually a SQLite database with the expected tables.
+        try:
+            con = sqlite3.connect(tmp_path)
+            cur = con.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            names = {row[0] for row in cur.fetchall()}
+            con.close()
+        except sqlite3.DatabaseError:
+            raise HTTPException(status_code=400, detail="Uploaded file is not a valid SQLite database")
+        if "users" not in names or "organizations" not in names:
+            raise HTTPException(
+                status_code=400,
+                detail="Uploaded database is missing expected tables (users, organizations) — wrong file?",
+            )
+
+        actor_id = current.user.id
+        audit(db, actor_id=actor_id, action="admin.db_restore")
+        db.commit()
+
+        # Close all live connections before swapping the file.
+        db.close()
+        engine.dispose()
+
+        if os.path.exists(dst_path):
+            backup_aside = f"{dst_path}.pre-restore-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
+            shutil.move(dst_path, backup_aside)
+        shutil.move(tmp_path, dst_path)
+    except HTTPException:
+        try: os.path.exists(tmp_path) and os.unlink(tmp_path)
+        except OSError: pass
+        raise
+    except Exception as exc:
+        try: os.path.exists(tmp_path) and os.unlink(tmp_path)
+        except OSError: pass
+        raise HTTPException(status_code=500, detail=f"Restore failed: {exc}")
+
+    return {
+        "ok": True,
+        "message": "Database restored. Restart the API server to reload all connections cleanly.",
+    }

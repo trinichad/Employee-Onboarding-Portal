@@ -1,0 +1,7 @@
+{
+  "requests_dir": "C:\\Projects\\RHO\\data\\requests",
+  "auto_open_text_on_save": true,
+  "outlook_to": "techsupport@dtmconsulting.com",
+  "outlook_subject": "Create a new Shared Mailbox Request",
+  "outlook_body_template": "Hi DTM,\n\nPlease create the following shared mailbox and assign the respective access.\n\n{request_form}"
+}
