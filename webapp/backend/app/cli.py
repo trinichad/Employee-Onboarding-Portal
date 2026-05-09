@@ -2,6 +2,7 @@
 
 Run from `webapp/backend` with the venv active:
 
+    python -m app.cli create-admin <email> [--password NEW] [--name "Full Name"]
     python -m app.cli reset-password <email> [--password NEW]
     python -m app.cli list-admins
     python -m app.cli activate <email>
@@ -13,13 +14,15 @@ If --password is omitted, a strong random password is generated and printed.
 from __future__ import annotations
 
 import argparse
+import getpass
 import secrets
 import string
 import sys
 
 from app.core.security import hash_password
-from app.db.session import SessionLocal
+from app.db.session import Base, SessionLocal, engine
 from app.models import Role, User
+import app.models  # noqa: F401
 
 
 def _gen_password(length: int = 16) -> str:
@@ -87,6 +90,51 @@ def cmd_promote(args: argparse.Namespace) -> None:
         db.close()
 
 
+def cmd_create_admin(args: argparse.Namespace) -> None:
+    """Create a new Global Admin. Interactive if --password omitted and a TTY
+    is attached; otherwise auto-generates a password.
+    """
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        email = args.email.lower()
+        if db.query(User).filter(User.email == email).one_or_none():
+            print(f"error: a user already exists with email {email}", file=sys.stderr)
+            sys.exit(1)
+
+        password = args.password
+        if not password:
+            if sys.stdin.isatty():
+                while True:
+                    p1 = getpass.getpass("New password (min 8 chars): ")
+                    if len(p1) < 8:
+                        print("  too short, try again")
+                        continue
+                    p2 = getpass.getpass("Confirm password: ")
+                    if p1 != p2:
+                        print("  passwords didn't match, try again")
+                        continue
+                    password = p1
+                    break
+            else:
+                password = _gen_password()
+                print(f"  generated password: {password}")
+
+        user = User(
+            email=email,
+            full_name=args.name or "Platform Admin",
+            password_hash=hash_password(password),
+            role=Role.GLOBAL_ADMIN,
+            organization_id=None,
+            is_active=True,
+        )
+        db.add(user)
+        db.commit()
+        print(f"Created global admin {email}")
+    finally:
+        db.close()
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="app.cli")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -110,6 +158,12 @@ def main(argv: list[str] | None = None) -> None:
     pr = sub.add_parser("promote", help="Promote a user to global_admin")
     pr.add_argument("email")
     pr.set_defaults(func=cmd_promote)
+
+    ca = sub.add_parser("create-admin", help="Create a new Global Admin")
+    ca.add_argument("email")
+    ca.add_argument("--password", help="Specific password (otherwise prompted or auto-generated)")
+    ca.add_argument("--name", help="Full name (default: 'Platform Admin')")
+    ca.set_defaults(func=cmd_create_admin)
 
     args = p.parse_args(argv)
     args.func(args)

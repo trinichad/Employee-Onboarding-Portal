@@ -35,6 +35,16 @@ class TokenPair(BaseModel):
     token_type: str = "bearer"
 
 
+class BootstrapAdminRequest(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: Optional[str] = None
+
+
+class SetupStatus(BaseModel):
+    needs_bootstrap: bool
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str
 

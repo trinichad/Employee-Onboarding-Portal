@@ -16,6 +16,24 @@ def main() -> None:
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
+        # Skip if any active Global Admin already exists (web wizard or CLI may
+        # have created one).
+        any_admin = (
+            db.query(User)
+            .filter(User.role == Role.GLOBAL_ADMIN, User.is_active.is_(True))
+            .first()
+        )
+        if any_admin:
+            print(f"[seed] Global admin already exists: {any_admin.email}")
+            return
+        # If no bootstrap password is configured, leave the install in
+        # "needs-bootstrap" state so the first-run wizard at /admin/login can
+        # collect credentials.
+        if not settings.BOOTSTRAP_ADMIN_PASSWORD:
+            print("[seed] No BOOTSTRAP_ADMIN_PASSWORD set; skipping.")
+            print("[seed] Visit /admin/login in the browser to create the first admin,")
+            print("[seed] or run: python -m app.cli create-admin you@example.com")
+            return
         email = settings.BOOTSTRAP_ADMIN_EMAIL.lower()
         existing = db.query(User).filter(User.email == email, User.role == Role.GLOBAL_ADMIN).one_or_none()
         if existing:

@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { Protected } from "@/auth/Protected";
 import Landing from "@/pages/public/Landing";
 import AdminLogin from "@/pages/public/AdminLogin";
+import AdminSetup from "@/pages/public/AdminSetup";
 import OrgLogin from "@/pages/public/OrgLogin";
 import EmployeeLogin from "@/pages/public/EmployeeLogin";
 import ForgotPassword from "@/pages/public/ForgotPassword";
@@ -43,6 +44,7 @@ export default function App() {
 
       {/* Global Admin */}
       <Route path="/admin/login" element={<AdminLogin />} />
+      <Route path="/admin/setup" element={<AdminSetup />} />
       <Route path="/admin" element={
         <Protected roles={["global_admin"]} redirectTo="/admin/login"><AdminLayout /></Protected>
       }>

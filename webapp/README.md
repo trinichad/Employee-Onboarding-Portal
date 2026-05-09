@@ -90,6 +90,28 @@ sudo systemctl restart itrequest-backend
 > For real production put nginx/Caddy in front of `:5173` and `:8000` with TLS.
 > The included frontend service uses `vite preview` for simplicity.
 
+### First-run: create the platform admin
+
+The first time anyone opens `http://<host>:5173/admin/login`, the page detects
+that no admin exists yet and redirects to a one-time setup wizard where you
+type your email + password. After that the wizard endpoint is permanently
+disabled.
+
+You can also create the first (or any extra) Global Admin from the CLI:
+
+```bash
+# interactive prompt for password
+webapp/scripts/itrequest.sh create-admin you@example.com
+
+# or specify a password inline
+webapp/scripts/itrequest.sh create-admin you@example.com 'Strong!Pass1'
+```
+
+If you'd rather seed non-interactively (e.g. for an automated provisioner),
+set `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` in `.env` before
+running the installer; the seed step will create that admin and the web wizard
+won't show up.
+
 ### Start / stop / restart
 
 A small wrapper is provided:
@@ -130,6 +152,7 @@ Other admin CLI commands (run from `webapp/backend` with the venv active):
 
 ```bash
 source .venv/bin/activate
+python -m app.cli create-admin you@example.com   # create a Global Admin
 python -m app.cli list-admins
 python -m app.cli activate   user@example.com
 python -m app.cli deactivate user@example.com

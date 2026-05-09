@@ -47,7 +47,10 @@ pip install -r requirements.txt
 [ -f .env ] || cp .env.example .env
 EOF
 
-# --- 3. DB init + seed --------------------------------------------------------
+# --- 3. DB init + (optional) seed --------------------------------------------
+# By default leaves the install in "needs-bootstrap" state so the operator can
+# create the first admin via the web wizard at /admin/login. If they set
+# BOOTSTRAP_ADMIN_PASSWORD in .env, app.seed will create that admin instead.
 sudo -u "$RUN_USER" bash <<EOF
 set -e
 cd "$BACKEND_DIR"
@@ -79,6 +82,10 @@ echo
 echo "==> Installed."
 echo "    Backend  : http://127.0.0.1:8000  (systemctl status itrequest-backend)"
 echo "    Frontend : http://<host>:5173     (systemctl status itrequest-frontend)"
+echo
+echo "    First-run: open  http://<host>:5173/admin/login  in a browser."
+echo "    The first admin is created via the on-screen setup wizard."
+echo "    (Or run:  $APP_DIR/webapp/scripts/itrequest.sh create-admin you@example.com)"
 echo
 echo "    Edit secrets in:  $BACKEND_DIR/.env"
 echo "    Then restart   :  sudo systemctl restart itrequest-backend"

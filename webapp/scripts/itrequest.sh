@@ -41,9 +41,24 @@ case "$cmd" in
       python -m app.cli reset-password "$email"
     fi
     ;;
+  create-admin)
+    email="${2:-}"; pw="${3:-}"
+    if [ -z "$email" ]; then
+      echo "usage: itrequest.sh create-admin EMAIL [PASSWORD]" >&2
+      exit 2
+    fi
+    cd "$BACKEND_DIR"
+    # shellcheck disable=SC1091
+    source .venv/bin/activate
+    if [ -n "$pw" ]; then
+      python -m app.cli create-admin "$email" --password "$pw"
+    else
+      python -m app.cli create-admin "$email"
+    fi
+    ;;
   *)
     cat <<EOF
-usage: $(basename "$0") {start|stop|restart|status|logs [N]|reset-password EMAIL [NEWPASS]}
+usage: $(basename "$0") {start|stop|restart|status|logs [N]|reset-password EMAIL [NEWPASS]|create-admin EMAIL [PASSWORD]}
 EOF
     exit 2
     ;;

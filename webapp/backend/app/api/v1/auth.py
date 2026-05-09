@@ -20,10 +20,12 @@ from app.db.session import get_db
 from app.models import InviteToken, Organization, PasswordResetToken, Role, User
 from app.schemas import (
     AcceptInvite,
+    BootstrapAdminRequest,
     LoginRequest,
     PasswordResetConfirm,
     PasswordResetRequest,
     RefreshRequest,
+    SetupStatus,
     TokenPair,
     UserOut,
 )
@@ -55,6 +57,61 @@ def _issue_tokens(user: User) -> TokenPair:
         ),
         refresh_token=create_refresh_token(user_id=user.id),
     )
+
+
+@router.get("/setup-status", response_model=SetupStatus)
+def setup_status(db: Session = Depends(get_db)):
+    """Public: tells the UI whether a first-run wizard is needed.
+
+    Returns needs_bootstrap=True only when no Global Admin exists in the DB.
+    """
+    has_admin = (
+        db.query(User.id)
+        .filter(User.role == Role.GLOBAL_ADMIN, User.is_active.is_(True))
+        .first()
+        is not None
+    )
+    return SetupStatus(needs_bootstrap=not has_admin)
+
+
+@router.post("/bootstrap")
+def bootstrap_admin(body: BootstrapAdminRequest, db: Session = Depends(get_db)):
+    """Public, one-shot: create the first Global Admin.
+
+    Hard-fails if any active Global Admin already exists. The endpoint becomes a
+    no-op for the rest of the install's life.
+    """
+    existing = (
+        db.query(User.id)
+        .filter(User.role == Role.GLOBAL_ADMIN, User.is_active.is_(True))
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="Setup already completed")
+
+    if len(body.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    email = body.email.lower()
+    if db.query(User).filter(User.email == email).one_or_none():
+        raise HTTPException(status_code=409, detail="A user with that email already exists")
+
+    user = User(
+        email=email,
+        full_name=(body.full_name or "Platform Admin"),
+        password_hash=hash_password(body.password),
+        role=Role.GLOBAL_ADMIN,
+        organization_id=None,
+        is_active=True,
+    )
+    db.add(user)
+    db.flush()
+    audit(db, actor_id=user.id, action="auth.bootstrap_admin", organization_id=None)
+    user.last_login_at = _now()
+    db.commit()
+    db.refresh(user)
+    pair = _issue_tokens(user)
+    return {"access_token": pair.access_token, "refresh_token": pair.refresh_token, "token_type": pair.token_type}
 
 
 @router.post("/login")

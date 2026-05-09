@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useAuth } from "@/auth/AuthContext";
+import { authApi } from "@/api";
 import { apiError } from "@/api/client";
 
 export default function AdminLogin() {
@@ -10,6 +11,15 @@ export default function AdminLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // First-run: if no admin exists yet, send the operator to the setup wizard.
+  useEffect(() => {
+    let cancelled = false;
+    authApi.setupStatus()
+      .then((s) => { if (!cancelled && s.needs_bootstrap) nav("/admin/setup", { replace: true }); })
+      .catch(() => { /* ignore — login flow will surface auth errors */ });
+    return () => { cancelled = true; };
+  }, [nav]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

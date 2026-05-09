@@ -19,6 +19,10 @@ import type {
 
 // ---- auth
 export const authApi = {
+  setupStatus: () =>
+    api.get<{ needs_bootstrap: boolean }>("/auth/setup-status").then(r => r.data),
+  bootstrap: (email: string, password: string, full_name?: string) =>
+    api.post<TokenPair>("/auth/bootstrap", { email, password, full_name }).then(r => r.data),
   login: (email: string, password: string, org_slug?: string) =>
     api.post<LoginResponse>("/auth/login", { email, password, org_slug }).then(r => r.data),
   employeeLogin: (email: string, password: string, org_slug?: string) =>
