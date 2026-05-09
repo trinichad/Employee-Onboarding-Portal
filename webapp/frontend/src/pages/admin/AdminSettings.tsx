@@ -151,73 +151,67 @@ export default function AdminSettings() {
           </div>
         </div>
 
+        <div className="card">
+          <div className="card-header"><h3 className="font-semibold">Email delivery status</h3></div>
+          <div className="card-body space-y-2 text-sm">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+              <div className="text-slate-600 dark:text-slate-300">Active SMTP host</div>
+              <div className="text-right"><code className="text-xs">{settings.data?.smtp_host || settings.data?.smtp_from || "— dev mode"}</code></div>
+              <div className="text-slate-600 dark:text-slate-300">Status</div>
+              <div className="text-right">
+                <span className={settings.data?.smtp_configured ? "badge-green" : "badge-amber"}>
+                  {settings.data?.smtp_configured ? "configured" : "not configured"}
+                </span>
+              </div>
+              <div className="text-slate-600 dark:text-slate-300">Public base URL</div>
+              <div className="text-right"><code className="text-xs break-all">{settings.data?.public_base_url || "—"}</code></div>
+              <div className="text-slate-600 dark:text-slate-300">Backend / Frontend</div>
+              <div className="text-right"><code className="text-xs">:{settings.data?.backend_port} / :{settings.data?.frontend_port}</code></div>
+            </div>
+            <p className="help pt-2">
+              SMTP settings below are stored in the database and take precedence over
+              <code>.env</code>. Per-organization overrides take precedence over these.
+            </p>
+          </div>
+        </div>
+
         <div className="card md:col-span-2">
           <div className="card-header">
             <h3 className="font-semibold">Network &amp; ports</h3>
           </div>
           <div className="card-body space-y-3">
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              Configure the public URL and listen ports. <strong>Saved values are
-              written to <code>webapp/runtime.env</code> and only take effect after
-              the services restart.</strong>
-            </p>
-            <ul className="text-xs text-slate-500 dark:text-slate-400 list-disc pl-5 space-y-0.5">
-              <li>Linux production: <code>webapp/scripts/itrequest.sh restart</code> (or <code>sudo systemctl restart itrequest-backend itrequest-frontend</code>).</li>
-              <li>Local dev: stop and re-run <code>npm run dev</code> (Vite reads <code>runtime.env</code> at startup) and restart <code>uvicorn</code> with <code>--port $BACKEND_PORT</code>.</li>
-              <li>The Public base URL is used immediately in newly generated invite, password-reset, and approval emails — no restart needed for that.</li>
-            </ul>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="sm:col-span-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="md:col-span-3">
                 <label className="label">Public base URL</label>
                 <input className="input" value={publicBaseUrl} onChange={(e) => setPublicBaseUrl(e.target.value)} placeholder="https://onboarding.example.com" />
-                <p className="help">Used in invite, password-reset, and approval emails. Include the scheme (http/https) and any port if non-standard.</p>
+                <p className="help">Used in invite, password-reset, and approval emails. Include the scheme (http/https) and any port if non-standard. Takes effect immediately.</p>
               </div>
               <div>
                 <label className="label">Backend port</label>
                 <input className="input" type="number" min={1} max={65535} value={backendPort} onChange={(e) => setBackendPort(Number(e.target.value))} />
-                <p className="help">Uvicorn listen port. Bound on 127.0.0.1 by default.</p>
+                <p className="help">Uvicorn listen port (127.0.0.1).</p>
               </div>
               <div>
                 <label className="label">Frontend port</label>
                 <input className="input" type="number" min={1} max={65535} value={frontendPort} onChange={(e) => setFrontendPort(Number(e.target.value))} />
-                <p className="help">Forward this port through your router for public access.</p>
+                <p className="help">Forward this port for public access.</p>
+              </div>
+              <div className="text-xs text-slate-500 dark:text-slate-400 self-end pb-1">
+                <div className="font-semibold text-slate-600 dark:text-slate-300 mb-0.5">Restart required</div>
+                <div>Linux: <code>itrequest.sh restart</code></div>
+                <div>Dev: re-run <code>npm run dev</code> &amp; <code>uvicorn</code></div>
               </div>
             </div>
             {settings.data && (
-              <div className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
-                <div>Runtime config file: <code>{settings.data.runtime_env_path}</code></div>
+              <div className="text-xs text-slate-500 dark:text-slate-400 flex flex-wrap gap-x-4 gap-y-1 pt-1 border-t border-slate-200 dark:border-slate-700">
+                <span>Runtime config: <code>{settings.data.runtime_env_path}</code></span>
                 {!settings.data.runtime_env_writable && (
-                  <div className="text-amber-700 dark:text-amber-400">
-                    Warning: backend can't write to that path. Saved values won't propagate to systemd.
-                    Make sure the service user owns <code>webapp/</code>.
-                  </div>
+                  <span className="text-amber-700 dark:text-amber-400">
+                    Warning: backend can't write to that path — values won't propagate to systemd.
+                  </span>
                 )}
               </div>
             )}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-header"><h3 className="font-semibold">Email delivery status</h3></div>
-          <div className="card-body space-y-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-slate-600">Active SMTP host</span>
-              <code className="text-xs">{settings.data?.smtp_host || settings.data?.smtp_from || "— dev mode (logs only)"}</code>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-slate-600">Status</span>
-              <span className={settings.data?.smtp_configured ? "badge-green" : "badge-amber"}>
-                {settings.data?.smtp_configured ? "configured" : "not configured — emails are printed to the backend log"}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-slate-600">Public base URL</span>
-              <code className="text-xs">{settings.data?.public_base_url}</code>
-            </div>
-            <p className="help pt-2">
-              SMTP settings configured below are stored in the database and take precedence over
-              the env <code>.env</code> file. Per-organization overrides (if any) take precedence over these.
-            </p>
           </div>
         </div>
 
