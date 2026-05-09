@@ -101,6 +101,14 @@ RUNEOF"
 
   systemctl daemon-reload
   systemctl enable --now itrequest-backend.service
+
+  # Allow the run user to restart the unit without a password prompt so the
+  # admin UI's "Restart server" button works.
+  SUDOERS_FILE="/etc/sudoers.d/itrequest-backend"
+  cat > "$SUDOERS_FILE" <<SUDOEOF
+$RUN_USER ALL=(root) NOPASSWD: /bin/systemctl restart itrequest-backend, /usr/bin/systemctl restart itrequest-backend
+SUDOEOF
+  chmod 0440 "$SUDOERS_FILE"
 fi
 
 HOST_HINT="$(hostname -I 2>/dev/null | awk '{print $1}')"

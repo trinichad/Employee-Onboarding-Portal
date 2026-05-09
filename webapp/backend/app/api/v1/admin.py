@@ -584,6 +584,48 @@ def update_platform_settings(
     return _settings_payload(row)
 
 
+@router.post("/restart", status_code=202)
+def restart_service(current: CurrentUser = Depends(require_global_admin)) -> dict:
+    """Restart the backend service.
+
+    On systemd hosts, schedules ``systemctl restart itrequest-backend`` after a
+    short delay so the HTTP response is delivered before the process dies. The
+    invoking unix user must be allowed to run that command without a password
+    prompt (the installer configures this via a sudoers drop-in).
+
+    Returns 202 Accepted on success. If systemd isn't available or the user
+    can't restart the unit, returns 501.
+    """
+    import os, shutil, subprocess
+    audit_db = next(get_db())
+    try:
+        audit(audit_db, actor_id=current.user.id, action="platform.restart",
+              organization_id=None, target_type="platform_settings", target_id=None)
+        audit_db.commit()
+    finally:
+        audit_db.close()
+
+    systemctl = shutil.which("systemctl")
+    if not systemctl or not os.path.exists("/run/systemd/system"):
+        raise HTTPException(
+            status_code=501,
+            detail="systemd not available on this host; restart manually.",
+        )
+    sudo = shutil.which("sudo") or "/usr/bin/sudo"
+    # Detach so the parent process can return the response before dying.
+    try:
+        subprocess.Popen(
+            ["/bin/sh", "-c", f"sleep 1 && {sudo} -n {systemctl} restart itrequest-backend"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"failed to schedule restart: {exc}") from exc
+    return {"status": "scheduled", "service": "itrequest-backend"}
+
+
 # ---------- Per-organization SMTP override (global admin only) ----------
 @router.get("/organizations/{org_id}/smtp", response_model=OrganizationSmtpOut)
 def get_org_smtp(org_id: int, db: Session = Depends(get_db)) -> OrganizationSmtpOut:

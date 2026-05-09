@@ -69,6 +69,14 @@ export default function AdminSettings() {
     onError: (e) => toast.error(apiError(e)),
   });
 
+  const restart = useMutation({
+    mutationFn: () => adminApi.restart(),
+    onSuccess: () => {
+      toast.success("Restart scheduled — server will be back in a few seconds");
+    },
+    onError: (e) => toast.error(apiError(e)),
+  });
+
   const toggleCol = (key: string) =>
     setColumns((prev) => prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]);
 
@@ -188,10 +196,23 @@ export default function AdminSettings() {
                 <input className="input" type="number" min={1} max={65535} value={backendPort} onChange={(e) => setBackendPort(Number(e.target.value))} />
                 <p className="help">Single port serves both the API and the web UI.</p>
               </div>
-              <div className="md:col-span-2 text-xs text-slate-500 dark:text-slate-400 self-end pb-1">
-                <div className="font-semibold text-slate-600 dark:text-slate-300 mb-0.5">Restart required</div>
-                <div>Linux: <code>sudo systemctl restart itrequest-backend</code></div>
-                <div>Dev: re-run <code>uvicorn</code></div>
+              <div className="md:col-span-2 self-end pb-1 flex items-start gap-3">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={restart.isPending}
+                  onClick={() => {
+                    if (window.confirm("Restart the server now? The page will be briefly unavailable.")) {
+                      restart.mutate();
+                    }
+                  }}
+                >
+                  {restart.isPending ? "Restarting…" : "Restart server"}
+                </button>
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  <div>Applies port / settings changes that need a process restart.</div>
+                  <div>Dev: re-run <code>uvicorn</code> manually.</div>
+                </div>
               </div>
             </div>
             {settings.data && (
