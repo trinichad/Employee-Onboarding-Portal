@@ -157,10 +157,15 @@ export default function AdminSettings() {
           </div>
           <div className="card-body space-y-3">
             <p className="text-sm text-slate-600 dark:text-slate-300">
-              Configure the public URL and listen ports. <strong>Restart the
-              services after saving</strong> for new ports to take effect:
-              <code className="ml-1">webapp/scripts/itrequest.sh restart</code>.
+              Configure the public URL and listen ports. <strong>Saved values are
+              written to <code>webapp/runtime.env</code> and only take effect after
+              the services restart.</strong>
             </p>
+            <ul className="text-xs text-slate-500 dark:text-slate-400 list-disc pl-5 space-y-0.5">
+              <li>Linux production: <code>webapp/scripts/itrequest.sh restart</code> (or <code>sudo systemctl restart itrequest-backend itrequest-frontend</code>).</li>
+              <li>Local dev: stop and re-run <code>npm run dev</code> (Vite reads <code>runtime.env</code> at startup) and restart <code>uvicorn</code> with <code>--port $BACKEND_PORT</code>.</li>
+              <li>The Public base URL is used immediately in newly generated invite, password-reset, and approval emails — no restart needed for that.</li>
+            </ul>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2">
                 <label className="label">Public base URL</label>
