@@ -57,6 +57,95 @@ Open <http://localhost:5173>.
 4. Visit `/{org-slug}` and log in as the Client Admin.
 5. Invite users, customize the form, submit requests.
 
+## Linux install (production-ish, single host)
+
+Tested on Ubuntu 22.04+/Debian 12 and RHEL/Rocky 9. Requires `sudo`.
+
+### One-shot install
+
+```bash
+git clone https://github.com/trinichad/Employee-Onboarding-Portal.git
+cd Employee-Onboarding-Portal
+sudo bash webapp/scripts/install.sh
+```
+
+That script:
+
+1. installs `python3`, `python3-venv`, `nodejs`, `npm`,
+2. creates the Python venv and installs backend deps,
+3. copies `webapp/backend/.env.example` → `.env` (only if missing),
+4. seeds the bootstrap Global Admin (prints the email/password — change it after first login),
+5. builds the frontend (`npm run build`),
+6. installs and enables two systemd units so the app comes up on boot:
+   - `itrequest-backend.service`  → uvicorn on `127.0.0.1:8000`
+   - `itrequest-frontend.service` → vite preview on `0.0.0.0:5173`
+
+After install, edit `webapp/backend/.env` (set `JWT_SECRET`, `JWT_REFRESH_SECRET`,
+`PUBLIC_BASE_URL`, `CORS_ORIGINS`, SMTP, etc.) and restart:
+
+```bash
+sudo systemctl restart itrequest-backend
+```
+
+> For real production put nginx/Caddy in front of `:5173` and `:8000` with TLS.
+> The included frontend service uses `vite preview` for simplicity.
+
+### Start / stop / restart
+
+A small wrapper is provided:
+
+```bash
+webapp/scripts/itrequest.sh start
+webapp/scripts/itrequest.sh stop
+webapp/scripts/itrequest.sh restart
+webapp/scripts/itrequest.sh status
+webapp/scripts/itrequest.sh logs        # follow backend+frontend journal
+webapp/scripts/itrequest.sh logs 500    # last 500 lines, then follow
+```
+
+Or talk to systemd directly:
+
+```bash
+sudo systemctl start    itrequest-backend itrequest-frontend
+sudo systemctl stop     itrequest-backend itrequest-frontend
+sudo systemctl restart  itrequest-backend itrequest-frontend
+sudo systemctl status   itrequest-backend
+sudo journalctl -u itrequest-backend -f
+```
+
+### Reset a password from the command line
+
+If a user (including a Global Admin) is locked out, reset their password without
+needing email delivery:
+
+```bash
+# auto-generate a strong password and print it
+webapp/scripts/itrequest.sh reset-password user@example.com
+
+# or set a specific password
+webapp/scripts/itrequest.sh reset-password user@example.com 'NewPass!2026'
+```
+
+Other admin CLI commands (run from `webapp/backend` with the venv active):
+
+```bash
+source .venv/bin/activate
+python -m app.cli list-admins
+python -m app.cli activate   user@example.com
+python -m app.cli deactivate user@example.com
+python -m app.cli promote    user@example.com   # make global_admin
+```
+
+### Updating to a new version
+
+```bash
+cd /path/to/Employee-Onboarding-Portal
+git pull
+cd webapp/backend && source .venv/bin/activate && pip install -r requirements.txt && deactivate
+cd ../frontend && npm install && npm run build
+sudo systemctl restart itrequest-backend itrequest-frontend
+```
+
 ## Project layout
 
 ```

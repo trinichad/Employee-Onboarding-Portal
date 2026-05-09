@@ -1,0 +1,17 @@
+[Unit]
+Description=IT Request Platform — FastAPI backend
+After=network.target
+
+[Service]
+Type=simple
+User=__USER__
+Group=__USER__
+WorkingDirectory=__APP_DIR__/webapp/backend
+Environment="PATH=__APP_DIR__/webapp/backend/.venv/bin"
+EnvironmentFile=__APP_DIR__/webapp/backend/.env
+ExecStart=__APP_DIR__/webapp/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
