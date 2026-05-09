@@ -328,6 +328,10 @@ RESOURCE_KINDS = (
 )
 
 
+import re as _kind_re
+_KIND_RE = _kind_re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
+
+
 class OrgResourceIn(BaseModel):
     kind: str = Field(..., max_length=40)
     name: str = Field(..., min_length=1, max_length=255)
@@ -337,8 +341,8 @@ class OrgResourceIn(BaseModel):
 
     @model_validator(mode="after")
     def _validate_kind(self) -> "OrgResourceIn":
-        if self.kind not in RESOURCE_KINDS:
-            raise ValueError(f"Unsupported kind: {self.kind}")
+        if not _KIND_RE.match(self.kind or ""):
+            raise ValueError("kind must be a slug (a-z0-9_-, max 40)")
         return self
 
 
@@ -358,6 +362,46 @@ class OrgResourceOut(ORMModel):
     linked_resource_ids: List[int] = Field(default_factory=list)
     is_active: bool
     updated_at: Optional[datetime] = None
+
+
+class OrgResourceBulkRow(BaseModel):
+    """One row in a bulk import. action defaults to upsert."""
+    action: str = Field(default="upsert")  # upsert | add | update | delete
+    kind: str
+    name: str = Field(..., min_length=1, max_length=255)
+    attributes: Optional[Dict[str, Any]] = None
+    is_active: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def _validate(self) -> "OrgResourceBulkRow":
+        if self.action not in ("upsert", "add", "update", "delete"):
+            raise ValueError(f"Unsupported action: {self.action}")
+        if not _KIND_RE.match(self.kind or ""):
+            raise ValueError("kind must be a slug (a-z0-9_-, max 40)")
+        return self
+
+
+class OrgResourceBulkIn(BaseModel):
+    rows: List[OrgResourceBulkRow]
+
+
+class OrgResourceBulkResultRow(BaseModel):
+    row: int
+    action: str
+    kind: str
+    name: str
+    result: str  # created | updated | deleted | skipped | error
+    detail: Optional[str] = None
+    id: Optional[int] = None
+
+
+class OrgResourceBulkOut(BaseModel):
+    created: int = 0
+    updated: int = 0
+    deleted: int = 0
+    skipped: int = 0
+    errors: int = 0
+    rows: List[OrgResourceBulkResultRow] = Field(default_factory=list)
 
 
 # ---------- Employee directory ----------

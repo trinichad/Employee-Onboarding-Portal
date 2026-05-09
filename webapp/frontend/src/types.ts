@@ -38,9 +38,7 @@ export interface FormSchemaDoc {
    *  the forwarding / mailbox-grant fields in the renderer. */
   termination_request_types?: string[];
 }
-export type ResourceKind =
-  | "property" | "shared_mailbox" | "network_folder" | "distribution_group"
-  | "google_drive" | "license" | "email" | "other";
+export type ResourceKind = string;
 export type FieldRole =
   | "" | "employee_name" | "employee_email"
   | "forward_email_to" | "grant_full_access_to";
@@ -61,6 +59,8 @@ export interface FormField {
   filter_by?: { source_field_id: string };
   /** Optional semantic role used by the renderer for special behaviors. */
   role?: FieldRole;
+  /** When set, only render this field if the current request_type is in this list. */
+  visible_when_request_type_in?: string[];
 }
 export interface FormGroup {
   id: string;

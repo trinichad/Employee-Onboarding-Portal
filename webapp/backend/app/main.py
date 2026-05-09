@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.api.v1 import api_router
 from app.core.config import settings
 from app.db.session import Base, engine
 import app.models  # noqa: F401  ensures models are registered on metadata
+
+
+# webapp/backend/app/main.py -> webapp/frontend/dist
+FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 
 def _ensure_dev_schema() -> None:
@@ -177,6 +185,29 @@ def create_app() -> FastAPI:
     @app.get("/api/health")
     def health() -> dict:
         return {"status": "ok", "version": __version__}
+
+    # ---- Serve the built frontend (single-port deployment) ------------------
+    # If webapp/frontend/dist exists, mount its static assets and SPA-fallback
+    # any non-/api path to index.html. This makes `uvicorn app.main:app` the
+    # only process needed in production: one port, no reverse proxy, no CORS.
+    if FRONTEND_DIST.is_dir() and (FRONTEND_DIST / "index.html").is_file():
+        assets_dir = FRONTEND_DIST / "assets"
+        if assets_dir.is_dir():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+        index_html = FRONTEND_DIST / "index.html"
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        def spa_fallback(full_path: str, request: Request):
+            # Never shadow API or docs routes.
+            if full_path.startswith("api/") or full_path in {"api", "api/docs", "api/openapi.json"}:
+                raise HTTPException(status_code=404)
+            # Serve a real file from dist if it exists (favicon, robots.txt, etc.)
+            candidate = (FRONTEND_DIST / full_path).resolve() if full_path else None
+            if candidate and FRONTEND_DIST in candidate.parents and candidate.is_file():
+                return FileResponse(str(candidate))
+            # Otherwise fall through to the SPA — React Router takes it from there.
+            return FileResponse(str(index_html))
 
     return app
 

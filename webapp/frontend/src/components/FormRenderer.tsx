@@ -12,8 +12,7 @@ interface Props {
   orgSlug?: string;
 }
 
-const DEFAULT_LOOKUP = ["Promotion", "Termination", "Rehire"];
-const DEFAULT_TERMINATION = ["Termination"];
+const TERMINATION_ROLES = new Set(["forward_email_to", "grant_full_access_to"]);
 
 export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Props) {
   const fields: FormField[] = schema.fields || [];
@@ -26,10 +25,24 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
   });
   const allResources: OrgResource[] = resources.data || [];
 
-  const lookupTypes = schema.lookup_request_types ?? DEFAULT_LOOKUP;
-  const terminationTypes = schema.termination_request_types ?? DEFAULT_TERMINATION;
-  const isLookup = !!values.request_type && lookupTypes.includes(values.request_type);
-  const isTermination = !!values.request_type && terminationTypes.includes(values.request_type);
+  // Derive termination behavior from field roles + their per-field visibility.
+  // Any field marked with role forward_email_to or grant_full_access_to whose
+  // visibility constraint matches the current request type triggers termination
+  // mode (currently-assigned summary). If a field has no visibility constraint
+  // and any of those roles, it counts for any selected request type.
+  const rt: string | undefined = values.request_type;
+  const isFieldVisible = (f: FormField) => {
+    const allow = f.visible_when_request_type_in;
+    if (allow === undefined) return true;
+    return !!rt && allow.includes(rt);
+  };
+  const isTermination = !!rt && fields.some(
+    (f) => f.role && TERMINATION_ROLES.has(f.role) && isFieldVisible(f),
+  );
+  // Show employee lookup on the same request types that trigger termination
+  // (find the existing employee). Other lookup scenarios (e.g. promotions)
+  // can be added later via an explicit per-field role.
+  const isLookup = isTermination;
 
   // Apply auto_from chain when a source field changes.
   function setWithAutoFill(key: string, v: any) {
@@ -93,7 +106,7 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
 
       {fields.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {fields.map((f) => (
+          {fields.filter(isFieldVisible).map((f) => (
             <FieldRow
               key={f.id}
               field={f}

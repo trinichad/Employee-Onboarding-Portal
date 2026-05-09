@@ -1,6 +1,18 @@
-import { Link } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { authApi } from "@/api";
 
 export default function Landing() {
+  const nav = useNavigate();
+  // First-run: if no Global Admin exists yet, jump straight to the setup wizard.
+  useEffect(() => {
+    let cancelled = false;
+    authApi.setupStatus()
+      .then((s) => { if (!cancelled && s.needs_bootstrap) nav("/admin/setup", { replace: true }); })
+      .catch(() => { /* ignore — backend may be warming up */ });
+    return () => { cancelled = true; };
+  }, [nav]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-brand-50">
       <header className="max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-6 flex items-center justify-between">

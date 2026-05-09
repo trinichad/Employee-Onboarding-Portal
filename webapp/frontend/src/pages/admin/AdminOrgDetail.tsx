@@ -70,6 +70,8 @@ export default function AdminOrgDetail() {
       <PageHeader title={org.name} description={`Slug: ${org.slug} · Created ${formatDate(org.created_at)}`}
         actions={<>
           <Link className="btn-secondary" to={`/${org.slug}`} target="_blank">Open portal ↗</Link>
+          <Link className="btn-secondary" to={`/${org.slug}/resources`}>Manage Resources</Link>
+          <Link className="btn-secondary" to={`/${org.slug}/form`}>Form Builder</Link>
           <button className="btn-primary" onClick={() => setInviteOpen(true)}><UserPlus size={14} /> Invite Client Admin</button>
         </>} />
 

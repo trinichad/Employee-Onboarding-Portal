@@ -13,7 +13,7 @@ Environment="FRONTEND_PORT=5173"
 EnvironmentFile=__APP_DIR__/webapp/backend/.env
 # runtime.env is written by the admin UI; "-" means missing-file is OK.
 EnvironmentFile=-__APP_DIR__/webapp/runtime.env
-ExecStart=__APP_DIR__/webapp/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port ${BACKEND_PORT}
+ExecStart=__APP_DIR__/webapp/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT}
 Restart=on-failure
 RestartSec=3
 

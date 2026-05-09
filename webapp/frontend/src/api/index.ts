@@ -167,6 +167,8 @@ export const orgApi = {
     api.patch<OrgResource>(`/orgs/${slug}/resources/${id}`, data).then(r => r.data),
   deleteResource: (slug: string, id: number) =>
     api.delete(`/orgs/${slug}/resources/${id}`),
+  bulkResources: (slug: string, rows: Array<{ action?: "upsert" | "add" | "update" | "delete"; kind: string; name: string; attributes?: Record<string, any>; is_active?: boolean }>) =>
+    api.post<{ created: number; updated: number; deleted: number; skipped: number; errors: number; rows: Array<{ row: number; action: string; kind: string; name: string; result: string; detail?: string; id?: number }> }>(`/orgs/${slug}/resources/bulk`, { rows }).then(r => r.data),
 
   // employee directory
   searchEmployees: (slug: string, params?: { q?: string; status?: "active" | "terminated"; limit?: number }) =>

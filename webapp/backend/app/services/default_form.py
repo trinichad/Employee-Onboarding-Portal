@@ -11,8 +11,8 @@ DEFAULT_FORM_SCHEMA: dict = {
         "New Shared Mailbox",
         "New Distribution Group",
     ],
-    "lookup_request_types": ["Promotion", "Rehire", "Termination"],
-    "termination_request_types": ["Termination"],
+    "lookup_request_types": ["Promotion", "Rehire", "Termination"],  # legacy; ignored by current renderer
+    "termination_request_types": ["Termination"],  # legacy; ignored by current renderer
     "fields": [
         {"id": "effective_date", "label": "Effective Date", "type": "date", "required": True,
          "description": "Date the change becomes active."},
@@ -39,9 +39,11 @@ DEFAULT_FORM_SCHEMA: dict = {
          "description": "Direct manager name."},
         {"id": "forward_email_to", "label": "Forward Email To", "type": "text", "required": False,
          "role": "forward_email_to",
+         "visible_when_request_type_in": ["Termination"],
          "description": "On Termination: another employee's email to forward this user's mail to."},
         {"id": "grant_full_access_to", "label": "Grant Full Mailbox Access To", "type": "text", "required": False,
          "role": "grant_full_access_to",
+         "visible_when_request_type_in": ["Termination"],
          "description": "On Termination: another employee who should be granted full mailbox access."},
     ],
     "groups": [
