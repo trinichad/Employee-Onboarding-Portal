@@ -6,20 +6,31 @@ import { authApi } from "@/api";
 import { apiError } from "@/api/client";
 
 export default function AdminLogin() {
-  const { login } = useAuth();
+  const { login, user, loading } = useAuth();
   const nav = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // Already authenticated: skip the login form and go to the appropriate console.
+  useEffect(() => {
+    if (loading || !user) return;
+    if (user.role === "global_admin") {
+      nav("/admin", { replace: true });
+    } else if (user.organization_slug) {
+      nav(`/${user.organization_slug}`, { replace: true });
+    }
+  }, [loading, user, nav]);
+
   // First-run: if no admin exists yet, send the operator to the setup wizard.
   useEffect(() => {
+    if (user) return; // skip setup probe when already signed in
     let cancelled = false;
     authApi.setupStatus()
       .then((s) => { if (!cancelled && s.needs_bootstrap) nav("/admin/setup", { replace: true }); })
       .catch(() => { /* ignore — login flow will surface auth errors */ });
     return () => { cancelled = true; };
-  }, [nav]);
+  }, [nav, user]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

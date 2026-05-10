@@ -144,6 +144,7 @@ class UserOut(ORMModel):
     can_approve_requests: bool = False
     is_active: bool
     organization_id: Optional[int]
+    organization_slug: Optional[str] = None
     last_login_at: Optional[datetime]
     created_at: datetime
     totp_enrolled: bool = False

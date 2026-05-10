@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { authApi } from "@/api";
@@ -10,13 +10,23 @@ import { AuthShell } from "./AdminLogin";
 interface OrgChoice { slug: string; name: string }
 
 export default function EmployeeLogin() {
-  const { refresh } = useAuth();
+  const { refresh, user, loading } = useAuth();
   const nav = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [choices, setChoices] = useState<OrgChoice[] | null>(null);
   const [chosenSlug, setChosenSlug] = useState("");
+
+  // Already authenticated: skip the login form and go to the appropriate portal.
+  useEffect(() => {
+    if (loading || !user) return;
+    if (user.organization_slug) {
+      nav(`/${user.organization_slug}`, { replace: true });
+    } else if (user.role === "global_admin") {
+      nav("/admin", { replace: true });
+    }
+  }, [loading, user, nav]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

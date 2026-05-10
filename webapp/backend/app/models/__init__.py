@@ -97,6 +97,10 @@ class User(Base):
     def totp_enrolled(self) -> bool:  # consumed by Pydantic UserOut
         return bool(self.totp_secret_enc and self.totp_enrolled_at)
 
+    @property
+    def organization_slug(self) -> Optional[str]:  # consumed by Pydantic UserOut
+        return self.organization.slug if self.organization else None
+
 
 class FormSchema(Base):
     """Versioned per-organization form configuration. The latest `is_active=True` row is rendered."""

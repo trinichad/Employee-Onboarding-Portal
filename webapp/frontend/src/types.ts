@@ -8,6 +8,7 @@ export interface User {
   can_approve_requests?: boolean;
   is_active: boolean;
   organization_id: number | null;
+  organization_slug?: string | null;
   last_login_at: string | null;
   created_at: string;
   totp_enrolled?: boolean;

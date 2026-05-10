@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useAuth } from "@/auth/AuthContext";
@@ -7,11 +7,23 @@ import { AuthShell } from "./AdminLogin";
 
 export default function OrgLogin() {
   const { orgSlug = "" } = useParams();
-  const { login } = useAuth();
+  const { login, user, loading } = useAuth();
   const nav = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // Already authenticated: send the user to a portal they can access.
+  useEffect(() => {
+    if (loading || !user) return;
+    if (user.role === "global_admin") {
+      nav(`/${orgSlug}`, { replace: true });
+    } else if (user.organization_slug === orgSlug) {
+      nav(`/${orgSlug}`, { replace: true });
+    } else if (user.organization_slug) {
+      nav(`/${user.organization_slug}`, { replace: true });
+    }
+  }, [loading, user, orgSlug, nav]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
