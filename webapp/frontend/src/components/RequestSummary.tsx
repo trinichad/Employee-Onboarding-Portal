@@ -91,9 +91,9 @@ export function RequestSummary({ schema, values, notes, supportMessage, resource
     rows.push({ label: "Message to support", value: supportMessage });
   }
 
-  if (notes && notes.trim() !== "") {
-    rows.push({ label: "Notes", value: notes });
-  }
+  // Notes are internal-only and intentionally not shown in the Summary card;
+  // they're rendered separately on the request detail page.
+  void notes;
 
   if (rows.length === 0) return null;
 

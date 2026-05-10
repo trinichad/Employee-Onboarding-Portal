@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.deps import is_approver, require_org_admin, require_org_approver, require_org_member
 from app.db.session import get_db
-from app.models import EmployeeRequest, FormSchema, Organization, RequestStatus, Role, User
+from app.models import EmployeeRequest, FormSchema, Organization, OrgResource, RequestStatus, Role, User
 from app.schemas import EmployeeRequestCreate, EmployeeRequestOut, EmployeeRequestUpdate
 from app.services.audit import audit
 from app.services.sender import org_sender, org_smtp
@@ -70,22 +70,62 @@ def _is_filled(v) -> bool:
     return True
 
 
-def _summary_lines(payload: dict, schema: Optional[dict]) -> List[str]:
+def _resources_by_id(db: Session, organization_id: int) -> dict[int, OrgResource]:
+    rows = db.query(OrgResource).filter(OrgResource.organization_id == organization_id).all()
+    return {r.id: r for r in rows}
+
+
+def _substitute(text: str, placeholder: str, name: Optional[str]) -> str:
+    if not text or not name:
+        return text
+    # Case-insensitive replace.
+    import re
+    return re.sub(re.escape(placeholder), name, text, flags=re.IGNORECASE)
+
+
+def _resolve_resource_name(value, resources: dict[int, OrgResource]) -> Optional[str]:
+    """Look up a resource id (int or numeric string) and return its name."""
+    if value is None:
+        return None
+    try:
+        rid = int(value)
+    except (TypeError, ValueError):
+        return None
+    r = resources.get(rid)
+    return r.name if r else None
+
+
+def _summary_lines(
+    payload: dict,
+    schema: Optional[dict],
+    resources: Optional[dict[int, OrgResource]] = None,
+) -> List[str]:
     """Render the request payload as labeled 'Label: value' lines using the
-    org's form schema, mirroring the frontend Summary card."""
+    org's form schema, mirroring the frontend Summary card. When a resource
+    catalog is provided, resource fields and dynamic-group placeholders are
+    resolved to human-readable names."""
     payload = payload or {}
     schema = schema or {}
+    resources = resources or {}
     lines: List[str] = []
 
     rt = payload.get("request_type")
     if _is_filled(rt):
         lines.append(f"Request Type: {rt}")
 
-    for f in (schema.get("fields") or []):
+    fields = schema.get("fields") or []
+    fields_by_id = {f.get("id"): f for f in fields}
+
+    for f in fields:
         v = payload.get(f.get("id"))
         if not _is_filled(v):
             continue
-        value = _format_date_mdy(str(v)) if f.get("type") == "date" else str(v)
+        if f.get("type") == "date":
+            value = _format_date_mdy(str(v))
+        elif f.get("type") == "resource":
+            value = _resolve_resource_name(v, resources) or str(v)
+        else:
+            value = str(v)
         lines.append(f"{f.get('label') or f.get('id')}: {value}")
 
     groups_payload = payload.get("_groups") or {}
@@ -93,7 +133,52 @@ def _summary_lines(payload: dict, schema: Optional[dict]) -> List[str]:
         if not g.get("enabled"):
             continue
         gid = g.get("id")
-        sel = groups_payload.get(gid) or {}
+        raw = groups_payload.get(gid)
+        if not raw:
+            continue
+
+        dyn = g.get("dynamic")
+        if dyn:
+            placeholder = dyn.get("placeholder") or "{Property}"
+            source_field_id = dyn.get("source_field_id")
+            source_val = payload.get(source_field_id) if source_field_id else None
+            default_name = _resolve_resource_name(source_val, resources)
+            if default_name is None and isinstance(source_val, str) and source_val.strip():
+                default_name = source_val
+            # Normalize raw to {default, extras}.
+            if isinstance(raw, dict) and ("default" in raw or "extras" in raw):
+                default_sel = raw.get("default") or {}
+                extras = raw.get("extras") or []
+            else:
+                default_sel = raw if isinstance(raw, dict) else {}
+                extras = []
+
+            def _items_for(sel: dict, name: Optional[str]) -> list[str]:
+                out = []
+                for it in (g.get("items") or []):
+                    if sel.get(it.get("id")):
+                        out.append(_substitute(it.get("label") or "", placeholder, name))
+                return out
+
+            def _title_for(name: Optional[str]) -> str:
+                return _substitute(g.get("title") or gid, placeholder, name)
+
+            default_items = _items_for(default_sel, default_name)
+            if default_items:
+                lines.append(f"{_title_for(default_name)}: {', '.join(default_items)}")
+            for ex in extras:
+                if not isinstance(ex, dict):
+                    continue
+                rid = ex.get("resource_id")
+                ex_name = _resolve_resource_name(rid, resources)
+                items = _items_for(ex.get("items") or {}, ex_name)
+                if items:
+                    title = _title_for(ex_name) if ex_name else f"{_title_for(None)} (resource #{rid})"
+                    lines.append(f"{title}: {', '.join(items)}")
+            continue
+
+        # Plain (non-dynamic) group.
+        sel = raw if isinstance(raw, dict) else {}
         labels = [it.get("label") for it in (g.get("items") or []) if sel.get(it.get("id"))]
         if labels:
             lines.append(f"{g.get('title') or gid}: {', '.join(labels)}")
@@ -314,7 +399,8 @@ def submit_request_to_support(
     )
     sender_addr, sender_name = org_sender(db, org)
     schema = _active_schema(db, org.id)
-    summary = "\n".join(_summary_lines(row.payload or {}, schema)) or "(no fields filled in)"
+    resources = _resources_by_id(db, org.id)
+    summary = "\n".join(_summary_lines(row.payload or {}, schema, resources)) or "(no fields filled in)"
     support_submission_email(
         to=org.support_email,
         org_name=org.name,
@@ -377,7 +463,8 @@ def resubmit_request_to_support(
     )
     sender_addr, sender_name = org_sender(db, org)
     schema = _active_schema(db, org.id)
-    summary = "\n".join(_summary_lines(row.payload or {}, schema)) or "(no fields filled in)"
+    resources = _resources_by_id(db, org.id)
+    summary = "\n".join(_summary_lines(row.payload or {}, schema, resources)) or "(no fields filled in)"
     revision = (row.submission_count or 1) + 1
     support_submission_email(
         to=org.support_email,
@@ -436,7 +523,8 @@ def export_request_text(request_id: int, bound=Depends(require_org_member), db: 
         raise HTTPException(status_code=403, detail="Forbidden")
     submitter = db.get(User, row.submitter_id) if row.submitter_id else None
     schema = _active_schema(db, org.id)
-    summary = _summary_lines(row.payload or {}, schema) or ["(no fields filled in)"]
+    resources = _resources_by_id(db, org.id)
+    summary = _summary_lines(row.payload or {}, schema, resources) or ["(no fields filled in)"]
     lines = [
         f"IT Request #{row.id}",
         f"Organization: {org.name} ({org.slug})",
