@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -87,8 +87,11 @@ export default function OrgFormBuilder() {
             <div><label className="label">Form name</label>
               <input className="input" value={doc.form_name || ""} onChange={(e) => setDoc({ ...doc, form_name: e.target.value })} /></div>
             <div><label className="label">Request types (one per line)</label>
-              <textarea className="input min-h-[80px]" value={(doc.request_types || []).join("\n")}
-                onChange={(e) => setDoc({ ...doc, request_types: e.target.value.split("\n").map(s => s.trim()).filter(Boolean) })} />
+              <LinesTextarea
+                value={doc.request_types || []}
+                onCommit={(lines) => setDoc({ ...doc, request_types: lines })}
+                className="input min-h-[80px]"
+              />
               <p className="help">e.g. New Hire, Promotion, Rehire, Termination. Per-field visibility ("show only on…") is set on each field below.</p>
             </div>
           </div></div>
@@ -280,9 +283,12 @@ function FieldEditor({ field, allFields, requestTypes, kindLabels, onChange, onM
           {f.type === "select" && (
             <div className="rounded-md bg-slate-50 dark:bg-slate-900/40 p-3">
               <label className="label">Options (one per line)</label>
-              <textarea className="input min-h-[80px]" value={(f.options || []).join("\n")}
-                onChange={(e) => onChange({ options: e.target.value.split("\n").map(s => s.trim()).filter(Boolean) })}
-                placeholder={"Option A\nOption B\nOption C"} />
+              <LinesTextarea
+                value={f.options || []}
+                onCommit={(lines) => onChange({ options: lines })}
+                className="input min-h-[80px]"
+                placeholder={"Option A\nOption B\nOption C"}
+              />
             </div>
           )}
 
@@ -529,6 +535,44 @@ function DynamicGroupConfig({ group, resourceFields, onChange }: {
         </div>
       )}
     </div>
+  );
+}
+/**
+ * Textarea bound to an array of lines. Stores raw text locally while the
+ * user is typing so newlines aren't lost (the previous version trimmed and
+ * filtered empties on every keystroke, which prevented Enter from creating
+ * a new blank line). Commits the cleaned list on blur, and resyncs from
+ * props when the parent value changes externally.
+ */
+function LinesTextarea({ value, onCommit, className, placeholder }: {
+  value: string[];
+  onCommit: (lines: string[]) => void;
+  className?: string;
+  placeholder?: string;
+}) {
+  const joined = (value || []).join("\n");
+  const [text, setText] = useState(joined);
+  const lastJoined = useRef(joined);
+  useEffect(() => {
+    // Only resync if the parent's array changed (e.g. external load), not
+    // because we just committed the same text.
+    if (joined !== lastJoined.current) {
+      setText(joined);
+      lastJoined.current = joined;
+    }
+  }, [joined]);
+  return (
+    <textarea
+      className={className}
+      placeholder={placeholder}
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => {
+        const lines = text.split("\n").map((s) => s.trim()).filter(Boolean);
+        lastJoined.current = lines.join("\n");
+        onCommit(lines);
+      }}
+    />
   );
 }
 
