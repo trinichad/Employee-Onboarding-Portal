@@ -94,6 +94,22 @@ export default function OrgFormBuilder() {
               />
               <p className="help">e.g. New Hire, Promotion, Rehire, Termination. Per-field visibility ("show only on…") is set on each field below.</p>
             </div>
+            <div className="md:col-span-2 grid md:grid-cols-2 gap-4 pt-2 border-t border-slate-100 dark:border-slate-700">
+              <RequestTypeChipPicker
+                label="Show employee lookup on these request types"
+                help="When the user picks one of these, an 'existing employee' typeahead appears so they can prefill from the employee's last submission. Leave empty to disable lookup."
+                options={doc.request_types || []}
+                value={doc.lookup_request_types || []}
+                onChange={(v) => setDoc({ ...doc, lookup_request_types: v })}
+              />
+              <RequestTypeChipPicker
+                label="Treat these as termination requests"
+                help="Marks the employee as terminated on submit and surfaces the 'currently assigned' summary using the forward_email_to / grant_full_access_to fields."
+                options={doc.request_types || []}
+                value={doc.termination_request_types || []}
+                onChange={(v) => setDoc({ ...doc, termination_request_types: v })}
+              />
+            </div>
           </div></div>
 
           <FieldsEditor doc={doc} setDoc={setDoc} kindLabels={kindLabels} />

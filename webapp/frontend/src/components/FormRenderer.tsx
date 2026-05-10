@@ -36,14 +36,20 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
     if (allow === undefined) return true;
     return !!rt && allow.includes(rt);
   };
-  const isTermination = !!rt && fields.some(
-    (f) => f.role && TERMINATION_ROLES.has(f.role) && isFieldVisible(f),
+  const isTermination = !!rt && (
+    Array.isArray(schema.termination_request_types)
+      ? schema.termination_request_types.includes(rt)
+      : fields.some((f) => f.role && TERMINATION_ROLES.has(f.role) && isFieldVisible(f))
   );
-  // Show employee lookup whenever a request type has been chosen so users can
-  // prefill from a previous submission for any request type (transfers,
-  // promotions, access changes, terminations, etc.). Status filtering is
-  // still tightened to active employees for termination-style requests.
-  const isLookup = !!rt;
+  // Show employee lookup based on the schema's lookup_request_types list.
+  // If the admin has not configured one (legacy schemas), fall back to the
+  // request types that have termination-role fields visible. Status
+  // filtering is still tightened to active employees for termination-style
+  // requests.
+  const lookupTypes = schema.lookup_request_types;
+  const isLookup = !!rt && (
+    Array.isArray(lookupTypes) ? lookupTypes.includes(rt) : isTermination
+  );
 
   // Apply auto_from chain when a source field changes.
   function setWithAutoFill(key: string, v: any) {
