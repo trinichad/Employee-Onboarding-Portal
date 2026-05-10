@@ -24,6 +24,10 @@ export default function OrgRequestDetail() {
   const req = useQuery({ queryKey: ["org.request", orgSlug, rid], queryFn: () => orgApi.getRequest(orgSlug, rid) });
   const form = useQuery({ queryKey: ["org.form", orgSlug], queryFn: () => orgApi.getForm(orgSlug) });
   const org = useQuery({ queryKey: ["org", orgSlug], queryFn: () => orgApi.get(orgSlug) });
+  const resources = useQuery({
+    queryKey: ["org.resources.all", orgSlug],
+    queryFn: () => orgApi.listResources(orgSlug, {}),
+  });
 
   const [values, setValues] = useState<Record<string, any>>({});
   const [notes, setNotes] = useState("");
@@ -193,7 +197,7 @@ export default function OrgRequestDetail() {
         </div>
       </div>
 
-      {form.data && <RequestSummary schema={form.data.schema} values={values} notes={notes} supportMessage={supportMessage} />}
+      {form.data && <RequestSummary schema={form.data.schema} values={values} notes={notes} supportMessage={supportMessage} resources={resources.data} />}
 
       {form.data && <FormRenderer schema={form.data.schema} values={values} onChange={setValues} disabled={!canEditNotes} orgSlug={orgSlug} />}
 

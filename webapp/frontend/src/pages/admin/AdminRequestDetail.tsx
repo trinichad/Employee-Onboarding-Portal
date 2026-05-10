@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
-import { adminApi } from "@/api";
+import { adminApi, orgApi } from "@/api";
 import { PageHeader, Spinner, StatusBadge } from "@/components/ui";
 import { RequestSummary } from "@/components/RequestSummary";
 import { formatDateTime } from "@/lib/platform";
@@ -10,6 +10,12 @@ export default function AdminRequestDetail() {
   const { id = "" } = useParams();
   const rid = Number(id);
   const data = useQuery({ queryKey: ["admin.request", rid], queryFn: () => adminApi.getRequest(rid) });
+  const orgSlug = data.data?.organization?.slug || "";
+  const resources = useQuery({
+    queryKey: ["org.resources.all", orgSlug],
+    queryFn: () => orgApi.listResources(orgSlug, {}),
+    enabled: !!orgSlug,
+  });
 
   if (data.isLoading) return <Spinner />;
   if (!data.data) return <div>Not found.</div>;
@@ -45,6 +51,7 @@ export default function AdminRequestDetail() {
         values={request.payload || {}}
         notes={request.notes}
         supportMessage={request.support_message}
+        resources={resources.data}
       />
     </>
   );

@@ -1,4 +1,4 @@
-import type { FormSchemaDoc } from "@/types";
+import type { FormSchemaDoc, OrgResource } from "@/types";
 import { normalizeDynamicGroupValue, substitutePlaceholder } from "@/components/FormRenderer";
 
 interface Props {
@@ -6,6 +6,9 @@ interface Props {
   values: Record<string, any>;
   notes?: string | null;
   supportMessage?: string | null;
+  /** Optional resource catalog so resource fields and dynamic-group
+   *  placeholders can be resolved to human-readable names instead of ids. */
+  resources?: OrgResource[];
 }
 
 function isFilled(v: any): boolean {
@@ -23,8 +26,10 @@ function formatDateMDY(s: string): string {
   return s;
 }
 
-export function RequestSummary({ schema, values, notes, supportMessage }: Props) {
+export function RequestSummary({ schema, values, notes, supportMessage, resources }: Props) {
   const rows: { label: string; value: string }[] = [];
+  const resourceById = new Map<number, OrgResource>();
+  for (const r of resources || []) resourceById.set(r.id, r);
 
   if (values.request_type) {
     rows.push({ label: "Request Type", value: String(values.request_type) });
@@ -33,7 +38,15 @@ export function RequestSummary({ schema, values, notes, supportMessage }: Props)
   for (const f of schema.fields || []) {
     const v = values[f.id];
     if (!isFilled(v)) continue;
-    const value = f.type === "date" ? formatDateMDY(String(v)) : String(v);
+    let value: string;
+    if (f.type === "date") {
+      value = formatDateMDY(String(v));
+    } else if (f.type === "resource") {
+      const r = resourceById.get(Number(v));
+      value = r ? r.name : String(v);
+    } else {
+      value = String(v);
+    }
     rows.push({ label: f.label, value });
   }
 
@@ -44,20 +57,27 @@ export function RequestSummary({ schema, values, notes, supportMessage }: Props)
       const placeholder = g.dynamic.placeholder || "{Property}";
       const sourceField = schema.fields?.find((x) => x.id === g.dynamic!.source_field_id);
       const sourceVal = sourceField ? values[sourceField.id] : undefined;
-      // The selected resource's name lives elsewhere in payload (we don't
-      // have the resource catalog here). Fall back to the raw value when it
-      // looks like a name; for ids we surface them so reviewers can still
-      // see context.
-      const defaultName = typeof sourceVal === "string" && sourceVal.trim() !== "" ? sourceVal : undefined;
+      // Resolve the source field's resource name when we have the catalog;
+      // fall back to the raw value if it's already a string (legacy text
+      // fields), otherwise undefined so the placeholder is left visible.
+      let defaultName: string | undefined;
+      if (typeof sourceVal === "number" || (typeof sourceVal === "string" && /^\d+$/.test(sourceVal))) {
+        defaultName = resourceById.get(Number(sourceVal))?.name;
+      } else if (typeof sourceVal === "string" && sourceVal.trim() !== "") {
+        defaultName = sourceVal;
+      }
       const renderItems = (sel: Record<string, boolean>, name: string | undefined) =>
         g.items.filter((it) => sel[it.id]).map((it) => substitutePlaceholder(it.label, placeholder, name));
       const titleFor = (name: string | undefined) => substitutePlaceholder(g.title, placeholder, name);
       const defaultItems = renderItems(dv.default, defaultName);
       if (defaultItems.length) rows.push({ label: titleFor(defaultName), value: defaultItems.join(", ") });
       for (const ex of dv.extras) {
-        // Without the resource catalog we can't translate the id to a name.
-        const items = renderItems(ex.items, undefined);
-        if (items.length) rows.push({ label: titleFor(undefined) + ` (resource #${ex.resource_id})`, value: items.join(", ") });
+        const extraName = resourceById.get(ex.resource_id)?.name;
+        const items = renderItems(ex.items, extraName);
+        if (items.length) {
+          const label = extraName ? titleFor(extraName) : `${titleFor(undefined)} (resource #${ex.resource_id})`;
+          rows.push({ label, value: items.join(", ") });
+        }
       }
       continue;
     }
@@ -84,8 +104,8 @@ export function RequestSummary({ schema, values, notes, supportMessage }: Props)
         <dl className="grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
           {rows.map((r, i) => (
             <div key={i} className="contents">
-              <dt className="font-medium text-slate-600">{r.label}:</dt>
-              <dd className="text-slate-900 whitespace-pre-wrap break-words">{r.value}</dd>
+              <dt className="font-medium text-slate-600 dark:text-slate-300">{r.label}:</dt>
+              <dd className="text-slate-900 dark:text-slate-100 whitespace-pre-wrap break-words">{r.value}</dd>
             </div>
           ))}
         </dl>

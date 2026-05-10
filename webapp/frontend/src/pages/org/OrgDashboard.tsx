@@ -83,7 +83,7 @@ export default function OrgDashboard() {
           >
             <div className="card-body">
               <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">{f.label}</div>
-              <div className="text-3xl font-semibold mt-1 text-slate-900">{counts[f.key]}</div>
+              <div className="text-3xl font-semibold mt-1 text-slate-900 dark:text-slate-100">{counts[f.key]}</div>
             </div>
           </button>
         ))}
