@@ -1,4 +1,5 @@
 import type { FormSchemaDoc } from "@/types";
+import { normalizeDynamicGroupValue, substitutePlaceholder } from "@/components/FormRenderer";
 
 interface Props {
   schema: FormSchemaDoc;
@@ -38,6 +39,28 @@ export function RequestSummary({ schema, values, notes, supportMessage }: Props)
 
   for (const g of schema.groups || []) {
     if (!g.enabled) continue;
+    if (g.dynamic) {
+      const dv = normalizeDynamicGroupValue(values._groups?.[g.id]);
+      const placeholder = g.dynamic.placeholder || "{Property}";
+      const sourceField = schema.fields?.find((x) => x.id === g.dynamic!.source_field_id);
+      const sourceVal = sourceField ? values[sourceField.id] : undefined;
+      // The selected resource's name lives elsewhere in payload (we don't
+      // have the resource catalog here). Fall back to the raw value when it
+      // looks like a name; for ids we surface them so reviewers can still
+      // see context.
+      const defaultName = typeof sourceVal === "string" && sourceVal.trim() !== "" ? sourceVal : undefined;
+      const renderItems = (sel: Record<string, boolean>, name: string | undefined) =>
+        g.items.filter((it) => sel[it.id]).map((it) => substitutePlaceholder(it.label, placeholder, name));
+      const titleFor = (name: string | undefined) => substitutePlaceholder(g.title, placeholder, name);
+      const defaultItems = renderItems(dv.default, defaultName);
+      if (defaultItems.length) rows.push({ label: titleFor(defaultName), value: defaultItems.join(", ") });
+      for (const ex of dv.extras) {
+        // Without the resource catalog we can't translate the id to a name.
+        const items = renderItems(ex.items, undefined);
+        if (items.length) rows.push({ label: titleFor(undefined) + ` (resource #${ex.resource_id})`, value: items.join(", ") });
+      }
+      continue;
+    }
     const checked = (g.items || [])
       .filter((it) => !!values._groups?.[g.id]?.[it.id])
       .map((it) => it.label);

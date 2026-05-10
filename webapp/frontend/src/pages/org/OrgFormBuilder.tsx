@@ -6,7 +6,7 @@ import { orgApi } from "@/api";
 import { apiError } from "@/api/client";
 import { PageHeader, Spinner } from "@/components/ui";
 import { FormRenderer } from "@/components/FormRenderer";
-import type { FormSchemaDoc } from "@/types";
+import type { FormField, FormGroup, FormSchemaDoc } from "@/types";
 
 /**
  * Form Builder: structured editor with JSON fallback. Lets admins:
@@ -396,6 +396,7 @@ function FieldEditor({ field, allFields, requestTypes, kindLabels, onChange, onM
 
 function GroupsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSchemaDoc) => void }) {
   const groups = doc.groups || [];
+  const resourceFields = (doc.fields || []).filter((f) => f.type === "resource");
   const setGroup = (i: number, patch: any) => {
     const n = groups.slice(); n[i] = { ...n[i], ...patch };
     setDoc({ ...doc, groups: n });
@@ -404,7 +405,10 @@ function GroupsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSch
   return (
     <div className="card">
       <div className="card-header flex items-center justify-between">
-        <h3 className="font-semibold">Groups (checkboxes)</h3>
+        <div>
+          <h3 className="font-semibold">Groups (checkboxes)</h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400">A group is a set of related checkboxes (e.g. Email Groups, Shared Mailboxes). Optionally tie a group to a resource field — for example, render one "Network Drives" group per Property the user is assigned to, with extra properties added on the fly.</p>
+        </div>
         <button className="btn-secondary" onClick={() =>
           setDoc({ ...doc, groups: [...groups, { id: `group_${groups.length + 1}`, title: "New Group", enabled: true, items: [] }] })}>
           Add group
@@ -412,13 +416,20 @@ function GroupsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSch
       </div>
       <div className="card-body space-y-4">
         {groups.map((g, i) => (
-          <div key={i} className="rounded-lg border border-slate-200 p-3 space-y-2">
+          <div key={i} className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-2">
             <div className="flex gap-2">
               <input className="input" value={g.title} onChange={(e) => setGroup(i, { title: e.target.value })} placeholder="Group title" />
               <input className="input max-w-[160px]" value={g.id} onChange={(e) => setGroup(i, { id: e.target.value })} placeholder="id" />
               <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={g.enabled} onChange={(e) => setGroup(i, { enabled: e.target.checked })} /> enabled</label>
               <button className="btn-ghost text-red-600" onClick={() => setDoc({ ...doc, groups: groups.filter((_, j) => j !== i) })}>Remove</button>
             </div>
+
+            <DynamicGroupConfig
+              group={g}
+              resourceFields={resourceFields}
+              onChange={(patch) => setGroup(i, patch)}
+            />
+
             <div className="space-y-1">
               {g.items.map((it, j) => (
                 <div key={j} className="grid grid-cols-12 gap-2">
@@ -433,6 +444,90 @@ function GroupsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSch
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function DynamicGroupConfig({ group, resourceFields, onChange }: {
+  group: FormGroup;
+  resourceFields: FormField[];
+  onChange: (patch: Partial<FormGroup>) => void;
+}) {
+  const dyn = group.dynamic;
+  const enabled = !!dyn;
+  return (
+    <div className="rounded-md bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900 p-3 space-y-2">
+      <label className="flex items-center gap-2 text-sm font-medium text-blue-900 dark:text-blue-200">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => {
+            if (e.target.checked) {
+              onChange({
+                dynamic: {
+                  source_field_id: resourceFields[0]?.id || "",
+                  placeholder: "{Property}",
+                  allow_additional: true,
+                },
+              });
+            } else {
+              onChange({ dynamic: undefined });
+            }
+          }}
+        />
+        Render this group per resource (dynamic group)
+      </label>
+      <p className="text-xs text-blue-900/80 dark:text-blue-200/80">
+        Use this when the same set of checkboxes repeats for each resource (e.g. one set of network-drive options per Property the employee belongs to). The placeholder text below — anywhere in the group title or item labels — gets replaced with the resource's name. Users can optionally add more resources on the form.
+      </p>
+      {enabled && dyn && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1">
+          <div>
+            <label className="label text-xs">Default resource comes from</label>
+            <select
+              className="input"
+              value={dyn.source_field_id || ""}
+              onChange={(e) => onChange({ dynamic: { ...dyn, source_field_id: e.target.value } })}
+            >
+              <option value="">— pick a resource field —</option>
+              {resourceFields.map((rf) => (
+                <option key={rf.id} value={rf.id}>{rf.label || rf.id}{rf.resource_kind ? ` (${rf.resource_kind})` : ""}</option>
+              ))}
+            </select>
+            {resourceFields.length === 0 && (
+              <p className="help text-amber-700 dark:text-amber-300">Add a resource field first (e.g. "Property") so this group has something to follow.</p>
+            )}
+          </div>
+          <div>
+            <label className="label text-xs">Placeholder token</label>
+            <input
+              className="input font-mono"
+              value={dyn.placeholder || "{Property}"}
+              onChange={(e) => onChange({ dynamic: { ...dyn, placeholder: e.target.value } })}
+              placeholder="{Property}"
+            />
+            <p className="help">Wherever this exact text appears in the title/items, it's replaced with the resource's name.</p>
+          </div>
+          <div className="space-y-1">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={!!dyn.allow_additional}
+                onChange={(e) => onChange({ dynamic: { ...dyn, allow_additional: e.target.checked } })}
+              />
+              Allow users to add more resources
+            </label>
+            {dyn.allow_additional && (
+              <input
+                className="input"
+                value={dyn.additional_button_label || ""}
+                onChange={(e) => onChange({ dynamic: { ...dyn, additional_button_label: e.target.value || undefined } })}
+                placeholder="+ Add another property (optional)"
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

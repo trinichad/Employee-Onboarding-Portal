@@ -67,6 +67,21 @@ export interface FormGroup {
   title: string;
   enabled: boolean;
   items: { id: string; label: string; description?: string }[];
+  /** When set, this group is rendered once per "context resource". The group
+   *  title and item labels may contain a placeholder (default "{Property}")
+   *  which is substituted with the context resource's name. The default
+   *  context comes from the field whose id is `source_field_id`. If
+   *  `allow_additional` is true, the user can add more contexts by picking
+   *  additional resources (of `resource_kind`, or the source field's kind).
+   *  Selections are stored under values._groups[groupId] as
+   *    { default: {itemId: bool}, extras: [{ resource_id, items }] } */
+  dynamic?: {
+    source_field_id: string;
+    placeholder?: string;
+    allow_additional?: boolean;
+    additional_button_label?: string;
+    resource_kind?: string;
+  };
 }
 export interface FormSchemaResp {
   id: number;

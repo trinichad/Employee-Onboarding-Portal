@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { orgApi } from "@/api";
-import type { Employee, FormField, FormSchemaDoc, OrgResource } from "@/types";
+import type { Employee, FormField, FormGroup, FormSchemaDoc, OrgResource } from "@/types";
 
 interface Props {
   schema: FormSchemaDoc;
@@ -39,10 +39,11 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
   const isTermination = !!rt && fields.some(
     (f) => f.role && TERMINATION_ROLES.has(f.role) && isFieldVisible(f),
   );
-  // Show employee lookup on the same request types that trigger termination
-  // (find the existing employee). Other lookup scenarios (e.g. promotions)
-  // can be added later via an explicit per-field role.
-  const isLookup = isTermination;
+  // Show employee lookup whenever a request type has been chosen so users can
+  // prefill from a previous submission for any request type (transfers,
+  // promotions, access changes, terminations, etc.). Status filtering is
+  // still tightened to active employees for termination-style requests.
+  const isLookup = !!rt;
 
   // Apply auto_from chain when a source field changes.
   function setWithAutoFill(key: string, v: any) {
@@ -69,6 +70,12 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
   function setNested(group: string, item: string, v: any) {
     const groups = { ...(values._groups || {}) };
     groups[group] = { ...(groups[group] || {}), [item]: v };
+    onChange({ ...values, _groups: groups });
+  }
+
+  function setDynamicGroup(groupId: string, next: DynamicGroupValue) {
+    const groups = { ...(values._groups || {}) };
+    groups[groupId] = next;
     onChange({ ...values, _groups: groups });
   }
 
@@ -121,24 +128,42 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
       )}
 
       {schema.groups?.filter((g) => g.enabled).map((g) => (
+        g.dynamic ? (
+          <DynamicGroupCard
+            key={g.id}
+            group={g}
+            value={normalizeDynamicGroupValue(values._groups?.[g.id])}
+            onChange={(v) => setDynamicGroup(g.id, v)}
+            disabled={disabled}
+            sourceResource={(() => {
+              const sid = g.dynamic.source_field_id;
+              const v = values[sid];
+              return v ? allResources.find((r) => r.id === Number(v)) : undefined;
+            })()}
+            sourceFieldLabel={fields.find((x) => x.id === g.dynamic!.source_field_id)?.label || g.dynamic.source_field_id}
+            allResources={allResources}
+            fallbackKind={fields.find((x) => x.id === g.dynamic!.source_field_id)?.resource_kind}
+          />
+        ) : (
         <div key={g.id} className="card">
-          <div className="card-header"><h3 className="font-medium text-slate-900">{g.title}</h3></div>
+          <div className="card-header"><h3 className="font-medium text-slate-900 dark:text-slate-100">{g.title}</h3></div>
           <div className="card-body grid grid-cols-1 md:grid-cols-2 gap-3">
             {g.items.map((it) => {
               const checked = !!values._groups?.[g.id]?.[it.id];
               return (
-                <label key={it.id} className="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-2 hover:bg-slate-50">
+                <label key={it.id} className="flex items-start gap-3 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/40">
                   <input type="checkbox" className="mt-1" disabled={disabled} checked={checked}
                     onChange={(e) => setNested(g.id, it.id, e.target.checked)} />
                   <div>
-                    <div className="text-sm font-medium text-slate-800">{it.label}</div>
-                    {it.description && <div className="text-xs text-slate-500">{it.description}</div>}
+                    <div className="text-sm font-medium text-slate-800 dark:text-slate-100">{it.label}</div>
+                    {it.description && <div className="text-xs text-slate-500 dark:text-slate-400">{it.description}</div>}
                   </div>
                 </label>
               );
             })}
           </div>
         </div>
+        )
       ))}
     </div>
   );
@@ -224,11 +249,15 @@ function EmployeeLookup({ orgSlug, onPick, requestType }: { orgSlug: string; onP
     enabled: open,
   });
 
+  const helper = isTermination
+    ? `${requestType} typically references someone already in your directory. Pick them to prefill what we previously submitted.`
+    : `Optional: pick an existing employee to prefill this ${requestType || "request"} from their last submission.`;
+
   return (
     <div className="rounded-lg border border-blue-200 bg-blue-50/60 dark:border-blue-900 dark:bg-blue-950/30 p-3">
       <div className="text-sm font-semibold text-blue-900 dark:text-blue-200">Look up existing employee</div>
       <div className="text-xs text-blue-800/80 dark:text-blue-300/80 mb-2">
-        {requestType} typically references someone already in your directory. Pick them to prefill what we previously submitted.
+        {helper}
       </div>
       <div className="relative">
         <input
@@ -263,12 +292,38 @@ function TerminationSummary({ values, schema, resources }: { values: Record<stri
   const checkedSummary = useMemo(() => {
     const out: { group: string; items: string[] }[] = [];
     for (const g of schema.groups || []) {
-      const sel = groups[g.id] || {};
-      const picked = g.items.filter((it) => sel[it.id]).map((it) => it.label);
-      if (picked.length) out.push({ group: g.title, items: picked });
+      const raw = groups[g.id];
+      if (!raw) continue;
+      if (g.dynamic) {
+        const dv = normalizeDynamicGroupValue(raw);
+        const sourceField = schema.fields?.find((x) => x.id === g.dynamic!.source_field_id);
+        const sourceResource = sourceField && values[sourceField.id]
+          ? resources.find((r) => r.id === Number(values[sourceField.id]))
+          : undefined;
+        const placeholder = g.dynamic.placeholder || "{Property}";
+        const renderTitle = (resName: string | undefined) =>
+          substitutePlaceholder(g.title, placeholder, resName);
+        const renderItems = (sel: Record<string, boolean>, resName: string | undefined) =>
+          g.items
+            .filter((it) => sel[it.id])
+            .map((it) => substitutePlaceholder(it.label, placeholder, resName));
+        const defaultItems = renderItems(dv.default, sourceResource?.name);
+        if (defaultItems.length) {
+          out.push({ group: renderTitle(sourceResource?.name), items: defaultItems });
+        }
+        for (const ex of dv.extras) {
+          const r = resources.find((x) => x.id === ex.resource_id);
+          const items = renderItems(ex.items, r?.name);
+          if (items.length) out.push({ group: renderTitle(r?.name), items });
+        }
+      } else {
+        const sel = raw as Record<string, boolean>;
+        const picked = g.items.filter((it) => sel[it.id]).map((it) => it.label);
+        if (picked.length) out.push({ group: g.title, items: picked });
+      }
     }
     return out;
-  }, [groups, schema]);
+  }, [groups, schema, values, resources]);
 
   const resourceSummary = useMemo(() => {
     const out: string[] = [];
@@ -304,6 +359,208 @@ function TerminationSummary({ values, schema, resources }: { values: Record<stri
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Dynamic per-resource groups
+// ---------------------------------------------------------------------------
+
+export interface DynamicGroupExtra {
+  resource_id: number;
+  items: Record<string, boolean>;
+}
+export interface DynamicGroupValue {
+  default: Record<string, boolean>;
+  extras: DynamicGroupExtra[];
+}
+
+/**
+ * Replace every occurrence of `placeholder` in `text` with `name`. When
+ * `name` is falsy the placeholder is left in place so the user can see the
+ * pending substitution and the saved request payload still tells reviewers
+ * the source field had not been filled in.
+ */
+export function substitutePlaceholder(text: string, placeholder: string, name?: string): string {
+  if (!text) return text;
+  if (!name) return text;
+  // Case-insensitive replace, escape regex metas in the placeholder.
+  const escaped = placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replace(new RegExp(escaped, "gi"), name);
+}
+
+export function normalizeDynamicGroupValue(raw: any): DynamicGroupValue {
+  if (!raw || typeof raw !== "object") return { default: {}, extras: [] };
+  // Already in dynamic shape.
+  if (Array.isArray(raw.extras) || raw.default) {
+    return {
+      default: (raw.default && typeof raw.default === "object") ? raw.default : {},
+      extras: Array.isArray(raw.extras)
+        ? raw.extras.map((e: any) => ({
+            resource_id: Number(e?.resource_id),
+            items: (e?.items && typeof e.items === "object") ? e.items : {},
+          })).filter((e: DynamicGroupExtra) => Number.isFinite(e.resource_id))
+        : [],
+    };
+  }
+  // Legacy flat shape from non-dynamic group converted to dynamic later: keep
+  // those as the default context.
+  return { default: raw as Record<string, boolean>, extras: [] };
+}
+
+function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, sourceFieldLabel, allResources, fallbackKind }: {
+  group: FormGroup;
+  value: DynamicGroupValue;
+  onChange: (v: DynamicGroupValue) => void;
+  disabled?: boolean;
+  sourceResource?: OrgResource;
+  sourceFieldLabel: string;
+  allResources: OrgResource[];
+  fallbackKind?: string;
+}) {
+  const dyn = group.dynamic!;
+  const placeholder = dyn.placeholder || "{Property}";
+  const kind = dyn.resource_kind || fallbackKind;
+  const kindLabel = kind ? kind.replace(/_/g, " ") : "resource";
+  const buttonLabel = dyn.additional_button_label || `+ Add another ${kindLabel}`;
+
+  const usedIds = new Set<number>([
+    ...(sourceResource ? [sourceResource.id] : []),
+    ...value.extras.map((e) => e.resource_id),
+  ]);
+  const pickerOptions = allResources
+    .filter((r) => r.is_active && (!kind || r.kind === kind) && !usedIds.has(r.id));
+
+  const setDefault = (itemId: string, checked: boolean) => {
+    onChange({ ...value, default: { ...value.default, [itemId]: checked } });
+  };
+  const setExtra = (idx: number, itemId: string, checked: boolean) => {
+    const extras = value.extras.slice();
+    extras[idx] = { ...extras[idx], items: { ...extras[idx].items, [itemId]: checked } };
+    onChange({ ...value, extras });
+  };
+  const removeExtra = (idx: number) => {
+    onChange({ ...value, extras: value.extras.filter((_, j) => j !== idx) });
+  };
+  const addExtra = (rid: number) => {
+    if (!Number.isFinite(rid)) return;
+    onChange({ ...value, extras: [...value.extras, { resource_id: rid, items: {} }] });
+  };
+
+  const renderContext = (
+    contextKey: string,
+    contextName: string | undefined,
+    selections: Record<string, boolean>,
+    onToggle: (itemId: string, checked: boolean) => void,
+    onRemove?: () => void,
+    badge?: string,
+  ) => {
+    const titleText = substitutePlaceholder(group.title, placeholder, contextName);
+    return (
+      <div key={contextKey} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/40 dark:bg-slate-900/40 p-3 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-baseline gap-2 min-w-0">
+            <h4 className="font-medium text-slate-800 dark:text-slate-100 truncate">{titleText}</h4>
+            {badge && <span className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{badge}</span>}
+          </div>
+          {onRemove && (
+            <button type="button" className="text-xs text-red-600 hover:text-red-700" disabled={disabled} onClick={onRemove}>
+              Remove
+            </button>
+          )}
+        </div>
+        {!contextName && contextKey === "default" && (
+          <p className="text-xs text-amber-700 dark:text-amber-300">
+            Pick a {sourceFieldLabel.toLowerCase()} above to fill in {placeholder}.
+          </p>
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {group.items.map((it) => {
+            const itemLabel = substitutePlaceholder(it.label, placeholder, contextName);
+            const itemDesc = it.description ? substitutePlaceholder(it.description, placeholder, contextName) : "";
+            const checked = !!selections[it.id];
+            return (
+              <label key={it.id} className="flex items-start gap-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/40">
+                <input type="checkbox" className="mt-1" disabled={disabled} checked={checked}
+                  onChange={(e) => onToggle(it.id, e.target.checked)} />
+                <div>
+                  <div className="text-sm font-medium text-slate-800 dark:text-slate-100">{itemLabel}</div>
+                  {itemDesc && <div className="text-xs text-slate-500 dark:text-slate-400">{itemDesc}</div>}
+                </div>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="card">
+      <div className="card-body space-y-3">
+        {renderContext(
+          "default",
+          sourceResource?.name,
+          value.default,
+          setDefault,
+          undefined,
+          sourceFieldLabel ? `from "${sourceFieldLabel}"` : undefined,
+        )}
+
+        {value.extras.map((ex, idx) => {
+          const r = allResources.find((x) => x.id === ex.resource_id);
+          return renderContext(
+            `extra-${idx}-${ex.resource_id}`,
+            r?.name || `#${ex.resource_id}`,
+            ex.items,
+            (itemId, checked) => setExtra(idx, itemId, checked),
+            () => removeExtra(idx),
+            "added",
+          );
+        })}
+
+        {dyn.allow_additional && !disabled && (
+          <DynamicGroupAddPicker
+            buttonLabel={buttonLabel}
+            options={pickerOptions}
+            kindLabel={kindLabel}
+            onPick={addExtra}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DynamicGroupAddPicker({ buttonLabel, options, kindLabel, onPick }: {
+  buttonLabel: string;
+  options: OrgResource[];
+  kindLabel: string;
+  onPick: (id: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [val, setVal] = useState("");
+  if (!open) {
+    return (
+      <button type="button" className="btn-secondary text-sm" onClick={() => setOpen(true)} disabled={options.length === 0}>
+        {options.length === 0 ? `No more ${kindLabel}s available` : buttonLabel}
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <select className="input flex-1" value={val} onChange={(e) => setVal(e.target.value)} autoFocus>
+        <option value="">— pick a {kindLabel} —</option>
+        {options.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+      </select>
+      <button type="button" className="btn-primary text-sm" disabled={!val}
+        onClick={() => { onPick(Number(val)); setVal(""); setOpen(false); }}>
+        Add
+      </button>
+      <button type="button" className="btn-ghost text-sm" onClick={() => { setVal(""); setOpen(false); }}>
+        Cancel
+      </button>
     </div>
   );
 }
