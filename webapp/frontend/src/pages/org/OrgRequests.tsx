@@ -11,21 +11,30 @@ export default function OrgRequests() {
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<string>(params.get("status") || "");
+  const [mineOnly, setMineOnly] = useState<boolean>(params.get("mine") === "1");
 
   useEffect(() => {
     const s = params.get("status") || "";
     setStatus(s);
+    setMineOnly(params.get("mine") === "1");
   }, [params]);
 
   const data = useQuery({
-    queryKey: ["org.requests", orgSlug, q, status],
-    queryFn: () => orgApi.listRequests(orgSlug, { q: q || undefined, status: (status || undefined) as any }),
+    queryKey: ["org.requests", orgSlug, q, status, mineOnly],
+    queryFn: () => orgApi.listRequests(orgSlug, { q: q || undefined, status: (status || undefined) as any, mine_only: mineOnly || undefined }),
   });
 
   const onStatusChange = (v: string) => {
     setStatus(v);
     const next = new URLSearchParams(params);
     if (v) next.set("status", v); else next.delete("status");
+    setParams(next, { replace: true });
+  };
+
+  const onMineChange = (v: boolean) => {
+    setMineOnly(v);
+    const next = new URLSearchParams(params);
+    if (v) next.set("mine", "1"); else next.delete("mine");
     setParams(next, { replace: true });
   };
 
@@ -44,6 +53,10 @@ export default function OrgRequests() {
             <option value="rejected">Rejected</option>
             <option value="canceled">Canceled</option>
           </select>
+          <label className="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 select-none">
+            <input type="checkbox" className="h-4 w-4" checked={mineOnly} onChange={(e) => onMineChange(e.target.checked)} />
+            Mine only
+          </label>
           <Link className="btn-primary" to={`/${orgSlug}/requests/new`}><Plus size={16} /> New</Link>
         </>} />
 

@@ -365,9 +365,17 @@ def support_submission_email(to: str, org_name: str, request_id: int, subject: s
         "--- Summary ---",
         payload_text,
     ]
+    rt_label_map = {
+        "new hire": "New Hire Request",
+        "rehire": "Rehire Request",
+        "promotion": "Promotion Request",
+        "termination": "Termination Request",
+    }
+    rt_key = (request_type or "").strip().lower()
+    rt_label = rt_label_map.get(rt_key) or (f"{request_type.strip()} Request" if request_type and request_type.strip() else "Employee Request")
     send_email(
         to=to,
-        subject=f"{subj_prefix}[{org_name}] New Hire Request #{request_id} — {subject}",
+        subject=f"{subj_prefix}[{org_name}] {rt_label} #{request_id} — {subject}",
         body="\n".join(body_lines),
         from_addr=from_addr,
         from_name=from_name,

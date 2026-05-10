@@ -219,8 +219,9 @@ def list_requests(
             | (EmployeeRequest.notes.ilike(like))
             | (EmployeeRequest.support_message.ilike(like))
         )
-    # Standard non-approver users only see their own
-    if (current.role == Role.USER and not is_approver(current)) or mine_only:
+    # All org members can view all requests in their org (prevents duplicate
+    # submissions). Use mine_only=true to opt into a personal view.
+    if mine_only:
         query = query.filter(EmployeeRequest.submitter_id == current.user.id)
     rows = query.order_by(EmployeeRequest.created_at.desc()).all()
     return [EmployeeRequestOut.model_validate(r) for r in rows]
@@ -273,8 +274,6 @@ def _load(db: Session, org_id: int, request_id: int) -> EmployeeRequest:
 def get_request(request_id: int, bound=Depends(require_org_member), db: Session = Depends(get_db)):
     org, current = bound
     row = _load(db, org.id, request_id)
-    if current.role == Role.USER and not is_approver(current) and row.submitter_id != current.user.id:
-        raise HTTPException(status_code=403, detail="Forbidden")
     return EmployeeRequestOut.model_validate(row)
 
 
@@ -519,8 +518,6 @@ def delete_request(
 def export_request_text(request_id: int, bound=Depends(require_org_member), db: Session = Depends(get_db)):
     org, current = bound
     row = _load(db, org.id, request_id)
-    if current.role == Role.USER and not is_approver(current) and row.submitter_id != current.user.id:
-        raise HTTPException(status_code=403, detail="Forbidden")
     submitter = db.get(User, row.submitter_id) if row.submitter_id else None
     schema = _active_schema(db, org.id)
     resources = _resources_by_id(db, org.id)
