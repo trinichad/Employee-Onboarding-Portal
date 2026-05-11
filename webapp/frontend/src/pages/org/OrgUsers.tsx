@@ -86,6 +86,12 @@ export default function OrgUsers() {
                       title={isAdminRow ? "Admins always approve" : "Allow this user to approve requests"}
                       checked={isAdminRow || !!u.can_approve_requests}
                       onChange={(e) => toggleApprover.mutate({ uid: u.id, can_approve: e.target.checked })}
+                    />
+                  </td>
+                  <td>
+                    <input type="checkbox" checked={u.is_active} onChange={(e) => toggle.mutate({ uid: u.id, active: e.target.checked })} />
+                  </td>
+                  <td className="text-right space-x-1">
                     {!u.has_password && (
                       <button
                         className="btn-ghost"
@@ -94,12 +100,6 @@ export default function OrgUsers() {
                         onClick={() => resendInvite.mutate(u.id)}
                       ><Mail size={14} /> Resend invite</button>
                     )}
-                    />
-                  </td>
-                  <td>
-                    <input type="checkbox" checked={u.is_active} onChange={(e) => toggle.mutate({ uid: u.id, active: e.target.checked })} />
-                  </td>
-                  <td className="text-right space-x-1">
                     <button className="btn-ghost" onClick={() => reset.mutate(u.id)}><KeyRound size={14} /> Reset</button>
                     <button className="btn-ghost text-red-600" onClick={() => { if (confirm(`Delete ${u.email}?`)) del.mutate(u.id); }}>
                       <Trash2 size={14} /> Delete
