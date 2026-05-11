@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { adminApi } from "@/api";
@@ -21,21 +21,9 @@ export default function AdminUsers() {
 
   const invalidateUsers = () => qc.invalidateQueries({ queryKey: ["admin.users.all"] });
 
-  const reset = useMutation({
-    mutationFn: (uid: number) => adminApi.forceResetUserPassword(uid),
-    onSuccess: () => toast.success("Reset link sent"),
-    onError: (e) => toast.error(apiError(e)),
-  });
-
   const resendInvite = useMutation({
     mutationFn: (uid: number) => adminApi.resendUserInvite(uid),
     onSuccess: () => toast.success("Invite resent"),
-    onError: (e) => toast.error(apiError(e)),
-  });
-
-  const reset2fa = useMutation({
-    mutationFn: (uid: number) => adminApi.resetUserTotp(uid),
-    onSuccess: () => { toast.success("2FA cleared — user must re-enroll on next sign-in"); invalidateUsers(); },
     onError: (e) => toast.error(apiError(e)),
   });
 
@@ -61,32 +49,8 @@ export default function AdminUsers() {
     onError: (e) => toast.error(apiError(e)),
   });
 
-  // Set password modal
-  const [pwUser, setPwUser] = useState<User | null>(null);
-  const [newPw, setNewPw] = useState("");
-  const setPassword = useMutation({
-    mutationFn: () => adminApi.setUserPassword(pwUser!.id, newPw),
-    onSuccess: () => {
-      toast.success("Password updated");
-      setPwUser(null);
-      setNewPw("");
-    },
-    onError: (e) => toast.error(apiError(e)),
-  });
-
-  // Delete confirm modal
-  const [delUser, setDelUser] = useState<User | null>(null);
-  const [delConfirm, setDelConfirm] = useState("");
-  const remove = useMutation({
-    mutationFn: () => adminApi.deleteUser(delUser!.id),
-    onSuccess: () => {
-      toast.success("User deleted");
-      invalidateUsers();
-      setDelUser(null);
-      setDelConfirm("");
-    },
-    onError: (e) => toast.error(apiError(e)),
-  });
+  // Edit modal
+  const [editUser, setEditUser] = useState<User | null>(null);
 
   const orgName = (id: number | null) => orgs.data?.find((o) => o.id === id)?.name || "—";
 
@@ -140,24 +104,7 @@ export default function AdminUsers() {
                         onClick={() => resendInvite.mutate(u.id)}
                       >Resend invite</button>
                     )}
-                    <button className="btn-ghost" onClick={() => reset.mutate(u.id)}>Reset password</button>
-                    <button className="btn-ghost" onClick={() => { setPwUser(u); setNewPw(""); }}>Change password</button>
-                    <button
-                      className="btn-ghost"
-                      disabled={!u.totp_enrolled || reset2fa.isPending}
-                      title={u.totp_enrolled ? "Clear this user's authenticator enrollment" : "User has no 2FA enrolled"}
-                      onClick={() => {
-                        if (window.confirm(`Clear two-factor authentication for ${u.email}? They'll be required to set up a new authenticator on next sign-in.`)) {
-                          reset2fa.mutate(u.id);
-                        }
-                      }}
-                    >Reset 2FA</button>
-                    <button
-                      className="btn-ghost text-red-600"
-                      disabled={u.id === me?.id}
-                      title={u.id === me?.id ? "You cannot delete your own account" : ""}
-                      onClick={() => { setDelUser(u); setDelConfirm(""); }}
-                    >Delete</button>
+                    <button className="btn-ghost" onClick={() => setEditUser(u)}>Edit</button>
                   </td>
                 </tr>
               ))}
@@ -206,55 +153,283 @@ export default function AdminUsers() {
         </div>
       </Modal>
 
-      <Modal open={!!pwUser} onClose={() => setPwUser(null)} title="Change password">
-        {pwUser && (
-          <div className="space-y-3">
-            <p className="text-sm text-slate-600">Set a new password for <b>{pwUser.email}</b>. Min 8 characters.</p>
-            <input
-              type="password"
-              className="input"
-              autoFocus
-              value={newPw}
-              onChange={(e) => setNewPw(e.target.value)}
-              placeholder="New password"
-            />
-            <div className="flex justify-end gap-2 pt-2">
-              <button className="btn-secondary" onClick={() => setPwUser(null)}>Cancel</button>
-              <button
-                className="btn-primary"
-                disabled={newPw.length < 8 || setPassword.isPending}
-                onClick={() => setPassword.mutate()}
-              >{setPassword.isPending ? "Saving…" : "Update password"}</button>
+      <EditUserModal
+        user={editUser}
+        orgs={orgs.data ?? []}
+        isSelf={!!editUser && editUser.id === me?.id}
+        onClose={() => setEditUser(null)}
+        onChanged={(updated) => {
+          invalidateUsers();
+          // Keep the modal open with refreshed data after edits, but close when
+          // the user is deleted.
+          if (updated === null) setEditUser(null);
+          else setEditUser(updated);
+        }}
+      />
+    </>
+  );
+}
+
+function EditUserModal({
+  user, orgs, isSelf, onClose, onChanged,
+}: {
+  user: User | null;
+  orgs: { id: number; name: string }[];
+  isSelf: boolean;
+  onClose: () => void;
+  onChanged: (updated: User | null) => void;
+}) {
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<Role>("user");
+  const [orgId, setOrgId] = useState<string>("");
+  const [isActive, setIsActive] = useState(true);
+  const [canApprove, setCanApprove] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    setFullName(user.full_name || "");
+    setEmail(user.email);
+    setRole(user.role);
+    setOrgId(user.organization_id != null ? String(user.organization_id) : "");
+    setIsActive(user.is_active);
+    setCanApprove(!!user.can_approve_requests);
+  }, [user]);
+
+  // Confirm/sub-modals
+  const [pwOpen, setPwOpen] = useState(false);
+  const [newPw, setNewPw] = useState("");
+  const [delOpen, setDelOpen] = useState(false);
+  const [delConfirm, setDelConfirm] = useState("");
+
+  const save = useMutation({
+    mutationFn: () => {
+      if (!user) throw new Error("No user");
+      const payload: any = {
+        full_name: fullName.trim(),
+        email: email.trim().toLowerCase(),
+        role,
+        is_active: isActive,
+        can_approve_requests: canApprove,
+        organization_id: role === "global_admin" ? null : (orgId ? Number(orgId) : null),
+      };
+      return adminApi.updateUser(user.id, payload);
+    },
+    onSuccess: (updated) => {
+      toast.success("User updated");
+      onChanged(updated);
+    },
+    onError: (e) => toast.error(apiError(e)),
+  });
+
+  const resetPwLink = useMutation({
+    mutationFn: () => adminApi.forceResetUserPassword(user!.id),
+    onSuccess: () => toast.success("Reset link sent"),
+    onError: (e) => toast.error(apiError(e)),
+  });
+
+  const setPassword = useMutation({
+    mutationFn: () => adminApi.setUserPassword(user!.id, newPw),
+    onSuccess: () => {
+      toast.success("Password updated");
+      setPwOpen(false);
+      setNewPw("");
+    },
+    onError: (e) => toast.error(apiError(e)),
+  });
+
+  const reset2fa = useMutation({
+    mutationFn: () => adminApi.resetUserTotp(user!.id),
+    onSuccess: () => {
+      toast.success("2FA cleared — user must re-enroll on next sign-in");
+      onChanged(user);
+    },
+    onError: (e) => toast.error(apiError(e)),
+  });
+
+  const remove = useMutation({
+    mutationFn: () => adminApi.deleteUser(user!.id),
+    onSuccess: () => {
+      toast.success("User deleted");
+      setDelOpen(false);
+      setDelConfirm("");
+      onChanged(null);
+    },
+    onError: (e) => toast.error(apiError(e)),
+  });
+
+  const resendInvite = useMutation({
+    mutationFn: () => adminApi.resendUserInvite(user!.id),
+    onSuccess: () => toast.success("Invite resent"),
+    onError: (e) => toast.error(apiError(e)),
+  });
+
+  if (!user) return null;
+
+  const orgRequired = role !== "global_admin";
+  const formValid = email.trim() && fullName.trim() && (!orgRequired || !!orgId);
+
+  return (
+    <Modal open={!!user} onClose={onClose} title={`Edit ${user.email}`} size="lg">
+      <div className="space-y-5">
+        <section className="space-y-3">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label">Full name</label>
+              <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Email</label>
+              <input type="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Role</label>
+              <select
+                className="input"
+                value={role}
+                onChange={(e) => {
+                  const r = e.target.value as Role;
+                  setRole(r);
+                  if (r === "global_admin") setOrgId("");
+                }}
+              >
+                <option value="user">Standard User</option>
+                <option value="client_admin">Client Admin</option>
+                <option value="global_admin">Global Admin</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">Organization {orgRequired && <span className="text-red-500">*</span>}</label>
+              <select
+                className="input"
+                value={orgId}
+                onChange={(e) => setOrgId(e.target.value)}
+                disabled={!orgRequired}
+              >
+                <option value="">{orgRequired ? "Select an organization…" : "— none —"}</option>
+                {orgs.map((o) => (
+                  <option key={o.id} value={String(o.id)}>{o.name}</option>
+                ))}
+              </select>
             </div>
           </div>
-        )}
+          <div className="flex flex-wrap gap-4 pt-1">
+            <label className="inline-flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={isActive}
+                disabled={isSelf}
+                onChange={(e) => setIsActive(e.target.checked)}
+              />
+              <span>Active</span>
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={canApprove}
+                onChange={(e) => setCanApprove(e.target.checked)}
+              />
+              <span>Can approve requests</span>
+            </label>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button className="btn-secondary" onClick={onClose}>Close</button>
+            <button
+              className="btn-primary"
+              disabled={!formValid || save.isPending}
+              onClick={() => save.mutate()}
+            >{save.isPending ? "Saving…" : "Save changes"}</button>
+          </div>
+        </section>
+
+        <section className="border-t border-slate-200 dark:border-slate-700 pt-4">
+          <h3 className="font-semibold text-sm mb-2">Account actions</h3>
+          <div className="flex flex-wrap gap-2">
+            {!user.has_password && (
+              <button
+                className="btn-secondary"
+                disabled={resendInvite.isPending}
+                onClick={() => resendInvite.mutate()}
+              >Resend invite</button>
+            )}
+            <button
+              className="btn-secondary"
+              disabled={resetPwLink.isPending}
+              onClick={() => resetPwLink.mutate()}
+              title="Email the user a password reset link"
+            >Send password reset</button>
+            <button
+              className="btn-secondary"
+              onClick={() => { setNewPw(""); setPwOpen(true); }}
+            >Change password…</button>
+            <button
+              className="btn-secondary"
+              disabled={!user.totp_enrolled || reset2fa.isPending}
+              title={user.totp_enrolled ? "Clear this user's authenticator enrollment" : "User has no 2FA enrolled"}
+              onClick={() => {
+                if (window.confirm(`Clear two-factor authentication for ${user.email}? They'll be required to set up a new authenticator on next sign-in.`)) {
+                  reset2fa.mutate();
+                }
+              }}
+            >Reset 2FA</button>
+          </div>
+        </section>
+
+        <section className="border-t border-red-200 dark:border-red-900/40 pt-4">
+          <h3 className="font-semibold text-sm mb-2 text-red-700 dark:text-red-400">Danger zone</h3>
+          <button
+            className="btn-danger"
+            disabled={isSelf}
+            title={isSelf ? "You cannot delete your own account" : ""}
+            onClick={() => { setDelConfirm(""); setDelOpen(true); }}
+          >Delete user</button>
+        </section>
+      </div>
+
+      <Modal open={pwOpen} onClose={() => setPwOpen(false)} title="Change password">
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">Set a new password for <b>{user.email}</b>. Min 8 characters.</p>
+          <input
+            type="password"
+            className="input"
+            autoFocus
+            value={newPw}
+            onChange={(e) => setNewPw(e.target.value)}
+            placeholder="New password"
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <button className="btn-secondary" onClick={() => setPwOpen(false)}>Cancel</button>
+            <button
+              className="btn-primary"
+              disabled={newPw.length < 8 || setPassword.isPending}
+              onClick={() => setPassword.mutate()}
+            >{setPassword.isPending ? "Saving…" : "Update password"}</button>
+          </div>
+        </div>
       </Modal>
 
-      <Modal open={!!delUser} onClose={() => setDelUser(null)} title="Delete user">
-        {delUser && (
-          <div className="space-y-3">
-            <p className="text-sm text-slate-700">
-              This permanently deletes <b>{delUser.full_name || delUser.email}</b> and any data tied to this user.
-              This cannot be undone.
-            </p>
-            <p className="text-sm text-slate-600">Type the user's email <span className="font-mono">{delUser.email}</span> to confirm.</p>
-            <input
-              className="input"
-              value={delConfirm}
-              onChange={(e) => setDelConfirm(e.target.value)}
-              placeholder={delUser.email}
-            />
-            <div className="flex justify-end gap-2 pt-2">
-              <button className="btn-secondary" onClick={() => setDelUser(null)}>Cancel</button>
-              <button
-                className="btn-danger"
-                disabled={delConfirm !== delUser.email || remove.isPending}
-                onClick={() => remove.mutate()}
-              >{remove.isPending ? "Deleting…" : "Permanently delete"}</button>
-            </div>
+      <Modal open={delOpen} onClose={() => setDelOpen(false)} title="Delete user">
+        <div className="space-y-3">
+          <p className="text-sm text-slate-700 dark:text-slate-200">
+            This permanently deletes <b>{user.full_name || user.email}</b> and any data tied to this user. This cannot be undone.
+          </p>
+          <p className="text-sm text-slate-600 dark:text-slate-300">Type the user's email <span className="font-mono">{user.email}</span> to confirm.</p>
+          <input
+            className="input"
+            value={delConfirm}
+            onChange={(e) => setDelConfirm(e.target.value)}
+            placeholder={user.email}
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <button className="btn-secondary" onClick={() => setDelOpen(false)}>Cancel</button>
+            <button
+              className="btn-danger"
+              disabled={delConfirm !== user.email || remove.isPending}
+              onClick={() => remove.mutate()}
+            >{remove.isPending ? "Deleting…" : "Permanently delete"}</button>
           </div>
-        )}
+        </div>
       </Modal>
-    </>
+    </Modal>
   );
 }

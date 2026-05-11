@@ -132,6 +132,17 @@ class UserUpdate(BaseModel):
     can_approve_requests: Optional[bool] = None
 
 
+class AdminUserUpdate(BaseModel):
+    """Cross-organization user update available to global admins."""
+
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    is_active: Optional[bool] = None
+    role: Optional[Role] = None
+    can_approve_requests: Optional[bool] = None
+    organization_id: Optional[int] = None
+
+
 class ProfileUpdate(BaseModel):
     full_name: Optional[str] = None
     theme: Optional[str] = Field(default=None, pattern="^(light|dark|system)$")

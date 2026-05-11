@@ -80,6 +80,17 @@ export const adminApi = {
     api.post<User>("/admin/invites", data).then(r => r.data),
   listAllUsers: (params?: { organization_id?: number; role?: Role }) =>
     api.get<User[]>("/admin/users", { params }).then(r => r.data),
+  updateUser: (
+    userId: number,
+    data: Partial<{
+      email: string;
+      full_name: string;
+      is_active: boolean;
+      role: Role;
+      can_approve_requests: boolean;
+      organization_id: number | null;
+    }>,
+  ) => api.patch<User>(`/admin/users/${userId}`, data).then(r => r.data),
   forceResetUserPassword: (userId: number) => api.post(`/admin/users/${userId}/reset-password`),
   resendUserInvite: (userId: number) => api.post(`/admin/users/${userId}/resend-invite`),
   setUserPassword: (userId: number, new_password: string) =>

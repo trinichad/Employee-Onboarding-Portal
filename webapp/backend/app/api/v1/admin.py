@@ -27,6 +27,7 @@ from app.models import (
 from app.schemas import (
     AdminInviteUser,
     AdminSetPassword,
+    AdminUserUpdate,
     AuditOut,
     EmployeeRequestOut,
     OrganizationCreate,
@@ -505,6 +506,106 @@ def admin_delete_user(
     audit(db, actor_id=current.user.id, action="admin.delete_user",
           organization_id=org_id, target_type="user", target_id=user_id)
     db.commit()
+
+
+@router.patch("/users/{user_id}", response_model=UserOut)
+def admin_update_user(
+    user_id: int,
+    body: AdminUserUpdate,
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_global_admin),
+) -> UserOut:
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    fields_set = body.model_fields_set
+    changes: dict = {}
+
+    # Resolve target role/org first so we can validate the combination.
+    target_role = body.role if "role" in fields_set and body.role is not None else user.role
+    if "organization_id" in fields_set:
+        target_org_id = body.organization_id
+    else:
+        target_org_id = user.organization_id
+
+    if target_role == Role.GLOBAL_ADMIN and target_org_id is not None:
+        raise HTTPException(status_code=400, detail="Global admins cannot belong to an organization")
+    if target_role != Role.GLOBAL_ADMIN and target_org_id is None:
+        raise HTTPException(status_code=400, detail="A non-global-admin user must belong to an organization")
+    if target_org_id is not None:
+        if db.get(Organization, target_org_id) is None:
+            raise HTTPException(status_code=400, detail="Organization not found")
+
+    # Prevent removing the last global admin (or demoting the only one, or
+    # the current user demoting themselves out of global admin).
+    if user.role == Role.GLOBAL_ADMIN and target_role != Role.GLOBAL_ADMIN:
+        remaining = (
+            db.query(User)
+            .filter(User.role == Role.GLOBAL_ADMIN, User.id != user.id, User.is_active.is_(True))
+            .count()
+        )
+        if remaining == 0:
+            raise HTTPException(status_code=400, detail="Cannot demote the last active global admin")
+        if user.id == current.user.id:
+            raise HTTPException(status_code=400, detail="You cannot demote your own global admin role")
+
+    if "email" in fields_set and body.email is not None:
+        new_email = body.email.strip().lower()
+        if not new_email:
+            raise HTTPException(status_code=400, detail="Email cannot be empty")
+        if new_email != user.email:
+            dup = (
+                db.query(User)
+                .filter(User.email == new_email, User.organization_id == target_org_id, User.id != user.id)
+                .first()
+            )
+            if dup is not None:
+                raise HTTPException(status_code=409, detail="A user with that email already exists in that organization")
+            changes["email"] = {"from": user.email, "to": new_email}
+            user.email = new_email
+
+    if "full_name" in fields_set and body.full_name is not None:
+        new_name = body.full_name.strip()
+        if new_name != user.full_name:
+            changes["full_name"] = {"from": user.full_name, "to": new_name}
+            user.full_name = new_name
+
+    if "is_active" in fields_set and body.is_active is not None:
+        if body.is_active != user.is_active:
+            if not body.is_active and user.id == current.user.id:
+                raise HTTPException(status_code=400, detail="You cannot deactivate your own account")
+            changes["is_active"] = {"from": user.is_active, "to": bool(body.is_active)}
+            user.is_active = bool(body.is_active)
+
+    if "role" in fields_set and body.role is not None and body.role != user.role:
+        changes["role"] = {"from": user.role.value, "to": body.role.value}
+        user.role = body.role
+
+    if "organization_id" in fields_set and target_org_id != user.organization_id:
+        changes["organization_id"] = {"from": user.organization_id, "to": target_org_id}
+        user.organization_id = target_org_id
+
+    if "can_approve_requests" in fields_set and body.can_approve_requests is not None:
+        if bool(body.can_approve_requests) != user.can_approve_requests:
+            changes["can_approve_requests"] = {
+                "from": user.can_approve_requests,
+                "to": bool(body.can_approve_requests),
+            }
+            user.can_approve_requests = bool(body.can_approve_requests)
+
+    if changes:
+        audit(
+            db,
+            actor_id=current.user.id,
+            action="admin.update_user",
+            organization_id=user.organization_id,
+            target_type="user",
+            target_id=user.id,
+            meta={"changes": changes},
+        )
+    db.commit()
+    db.refresh(user)
+    return UserOut.model_validate(user)
 
 
 @router.post("/users/{user_id}/totp/reset", status_code=204, response_class=Response)
