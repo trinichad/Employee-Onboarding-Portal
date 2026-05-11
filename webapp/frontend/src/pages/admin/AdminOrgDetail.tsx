@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import { AlertTriangle, KeyRound, Trash2, UserPlus } from "lucide-react";
-import { adminApi } from "@/api";
+import { adminApi, orgApi } from "@/api";
 import { apiError } from "@/api/client";
 import { Modal } from "@/components/Modal";
 import { PageHeader, Spinner } from "@/components/ui";
@@ -113,6 +113,14 @@ export default function AdminOrgDetail() {
         </div>
       </div>
 
+      <div className="mt-6 grid md:grid-cols-2 gap-4">
+        <OrgLogoCard
+          slug={org.slug}
+          logoUrl={org.logo_url || null}
+          onChanged={async () => { await qc.invalidateQueries({ queryKey: ["orgs"] }); }}
+        />
+      </div>
+
       {orgSmtp.data && (
         <div className="mt-6">
           <SmtpForm
@@ -175,5 +183,56 @@ export default function AdminOrgDetail() {
         </div>
       </Modal>
     </>
+  );
+}
+
+function OrgLogoCard({ slug, logoUrl, onChanged }: { slug: string; logoUrl: string | null; onChanged: () => Promise<void> | void }) {
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [bust, setBust] = useState(0);
+  const onPick = () => fileRef.current?.click();
+  const onUpload = async (f: File) => {
+    setBusy(true);
+    try {
+      await orgApi.uploadLogo(slug, f);
+      setBust(Date.now());
+      await onChanged();
+      toast.success("Logo updated");
+    } catch (e) { toast.error(apiError(e)); }
+    finally { setBusy(false); if (fileRef.current) fileRef.current.value = ""; }
+  };
+  const onRemove = async () => {
+    setBusy(true);
+    try {
+      await orgApi.deleteLogo(slug);
+      await onChanged();
+      toast.success("Logo removed");
+    } catch (e) { toast.error(apiError(e)); }
+    finally { setBusy(false); }
+  };
+  const src = logoUrl ? `${logoUrl}?v=${bust || "x"}` : null;
+  return (
+    <div className="card">
+      <div className="card-header"><h3 className="font-semibold">Organization logo</h3></div>
+      <div className="card-body space-y-3">
+        <p className="text-xs text-slate-500">Shown in this organization's sidebar. PNG, JPG, WEBP, SVG, GIF, or ICO. Max 2 MB.</p>
+        <div className="flex items-center gap-4">
+          <div className="h-16 w-16 rounded-lg border border-slate-200 dark:border-slate-700 bg-white grid place-items-center overflow-hidden">
+            {src ? <img src={src} alt="" className="max-h-full max-w-full object-contain" /> : <span className="text-xs text-slate-400">No logo</span>}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif,image/vnd.microsoft.icon,image/x-icon"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void onUpload(f); }}
+            />
+            <button className="btn" disabled={busy} onClick={onPick}>{logoUrl ? "Replace…" : "Upload…"}</button>
+            {logoUrl ? <button className="btn-secondary" disabled={busy} onClick={onRemove}>Remove</button> : null}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
