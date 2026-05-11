@@ -123,6 +123,7 @@ def _settings_payload(row: PlatformSetting) -> PlatformSettingsOut:
         backend_port=int(row.backend_port or 8000),
         runtime_env_path=_runtime_env_path(),
         runtime_env_writable=_runtime_env_writable(),
+        logo_url=("/api/v1/branding/platform/logo" if row.logo_ext else None),
     )
 
 
@@ -584,6 +585,34 @@ def list_audit(
     if actor_ids:
         for u in db.query(User).filter(User.id.in_(actor_ids)).all():
             actors[u.id] = u
+
+    # Resolve human-friendly labels for targets we can identify by id.
+    def _ids_for(t: str) -> set[int]:
+        out: set[int] = set()
+        for r in rows:
+            if r.target_type == t and r.target_id is not None:
+                try:
+                    out.add(int(r.target_id))
+                except (TypeError, ValueError):
+                    pass
+        return out
+
+    user_target_ids = _ids_for("user")
+    org_target_ids = _ids_for("organization")
+    req_target_ids = _ids_for("employee_request")
+    user_labels: dict[int, str] = {}
+    if user_target_ids:
+        for u in db.query(User).filter(User.id.in_(user_target_ids)).all():
+            user_labels[u.id] = u.email
+    org_labels: dict[int, str] = {}
+    if org_target_ids:
+        for o in db.query(Organization).filter(Organization.id.in_(org_target_ids)).all():
+            org_labels[o.id] = o.name
+    req_labels: dict[int, str] = {}
+    if req_target_ids:
+        for r in db.query(EmployeeRequest).filter(EmployeeRequest.id.in_(req_target_ids)).all():
+            req_labels[r.id] = r.subject or f"Request #{r.id}"
+
     out: List[AuditOut] = []
     for a in rows:
         item = AuditOut.model_validate(a)
@@ -591,6 +620,18 @@ def list_audit(
         if u is not None:
             item.actor_email = u.email
             item.actor_name = u.full_name or None
+        if a.target_type and a.target_id is not None:
+            try:
+                tid = int(a.target_id)
+            except (TypeError, ValueError):
+                tid = None
+            if tid is not None:
+                if a.target_type == "user":
+                    item.target_label = user_labels.get(tid)
+                elif a.target_type == "organization":
+                    item.target_label = org_labels.get(tid)
+                elif a.target_type == "employee_request":
+                    item.target_label = req_labels.get(tid)
         out.append(item)
     return out
 

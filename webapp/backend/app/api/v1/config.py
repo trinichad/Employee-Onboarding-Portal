@@ -14,7 +14,9 @@ def public_config(db: Session = Depends(get_db)) -> dict:
     """Public, unauthenticated platform metadata used by the frontend to
     render localized timestamps and the app title before login."""
     row = db.get(PlatformSetting, 1)
+    logo_url = "/api/v1/branding/platform/logo" if (row and row.logo_ext) else None
     return {
         "platform_name": (row.platform_name if row else "Employee Onboarding Portal") or "Employee Onboarding Portal",
         "timezone": (row.timezone if row else "UTC") or "UTC",
+        "logo_url": logo_url,
     }

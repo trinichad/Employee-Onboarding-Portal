@@ -26,6 +26,7 @@ export interface Organization {
   from_email?: string;
   from_name?: string;
   dashboard_columns?: string[] | null;
+  logo_url?: string | null;
   created_at: string;
 }
 
@@ -132,6 +133,7 @@ export interface AuditEntry {
   action: string;
   target_type: string | null;
   target_id: string | null;
+  target_label?: string | null;
   meta: Record<string, any>;
   created_at: string;
 }
@@ -162,6 +164,7 @@ export interface PlatformSettings extends SmtpConfig {
   backend_port: number;
   runtime_env_path: string;
   runtime_env_writable: boolean;
+  logo_url?: string | null;
 }
 
 export interface SmtpConfigUpdate {

@@ -121,6 +121,14 @@ export const adminApi = {
       "/admin/smtp-test",
       { scope, org_id: orgId, send_to: sendTo },
     ).then(r => r.data),
+  uploadPlatformLogo: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return api.put("/branding/platform/logo", fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  deletePlatformLogo: () => api.delete("/branding/platform/logo"),
 };
 
 // ---- org-scoped
@@ -161,6 +169,15 @@ export const orgApi = {
 
   updateSettings: (slug: string, data: Partial<{ name: string; support_email: string; from_email: string; from_name: string; dashboard_columns: string[]; branding: any }>) =>
     api.patch<Organization>(`/orgs/${slug}/settings`, data).then(r => r.data),
+
+  uploadLogo: (slug: string, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return api.put(`/branding/orgs/${slug}/logo`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  deleteLogo: (slug: string) => api.delete(`/branding/orgs/${slug}/logo`),
 
   // resource catalog
   listResources: (slug: string, params?: { kind?: ResourceKind; include_inactive?: boolean }) =>

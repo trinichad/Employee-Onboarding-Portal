@@ -47,6 +47,9 @@ class Organization(Base):
     smtp_username: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     smtp_password: Mapped[str] = mapped_column(String(512), nullable=False, default="")
     dashboard_columns: Mapped[Optional[list]] = mapped_column(JSON, nullable=True, default=None)
+    # File extension of an uploaded logo ("png", "jpg", "svg", "webp"). Empty = no logo.
+    # The actual file lives at data/logos/org-<id>.<ext>; served via /api/v1/branding/orgs/<slug>/logo.
+    logo_ext: Mapped[str] = mapped_column(String(8), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -57,6 +60,12 @@ class Organization(Base):
     requests: Mapped[List["EmployeeRequest"]] = relationship(
         back_populates="organization", cascade="all, delete-orphan"
     )
+
+    @property
+    def logo_url(self) -> Optional[str]:  # consumed by Pydantic OrganizationOut
+        if not self.logo_ext:
+            return None
+        return f"/api/v1/branding/orgs/{self.slug}/logo"
 
 
 class User(Base):
@@ -234,6 +243,9 @@ class PlatformSetting(Base):
     backend_port: Mapped[int] = mapped_column(Integer, nullable=False, default=8000)
     frontend_port: Mapped[int] = mapped_column(Integer, nullable=False, default=5173)
     public_base_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    # File extension of an uploaded platform logo. Empty = no custom logo.
+    # File lives at data/logos/platform.<ext>; served via /api/v1/branding/platform/logo.
+    logo_ext: Mapped[str] = mapped_column(String(8), nullable=False, default="")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

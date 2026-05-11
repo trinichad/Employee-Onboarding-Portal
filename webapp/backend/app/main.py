@@ -96,9 +96,16 @@ def _ensure_dev_schema() -> None:
                 ("backend_port", "ALTER TABLE platform_settings ADD COLUMN backend_port INTEGER NOT NULL DEFAULT 8000"),
                 ("frontend_port", "ALTER TABLE platform_settings ADD COLUMN frontend_port INTEGER NOT NULL DEFAULT 5173"),
                 ("public_base_url", "ALTER TABLE platform_settings ADD COLUMN public_base_url VARCHAR(512) NOT NULL DEFAULT ''"),
+                ("logo_ext", "ALTER TABLE platform_settings ADD COLUMN logo_ext VARCHAR(8) NOT NULL DEFAULT ''"),
             ]:
                 if not has_col("platform_settings", col):
                     conn.exec_driver_sql(ddl)
+
+        # Org logo column
+        if table_exists("organizations") and not has_col("organizations", "logo_ext"):
+            conn.exec_driver_sql(
+                "ALTER TABLE organizations ADD COLUMN logo_ext VARCHAR(8) NOT NULL DEFAULT ''"
+            )
 
         # SMTP override columns on organizations + platform_settings
         smtp_cols = [

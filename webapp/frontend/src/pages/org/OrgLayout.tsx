@@ -42,10 +42,15 @@ export default function OrgLayout() {
 
   const SidebarContent = (
     <>
-      <div className="px-5 py-5 border-b border-slate-100 dark:border-slate-700">
-        <div className="text-xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Organization</div>
-        <div className="text-sm font-semibold mt-0.5 truncate">{org.data?.name}</div>
-        <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{org.data?.slug}</div>
+      <div className="px-5 py-5 border-b border-slate-100 dark:border-slate-700 flex items-center gap-3">
+        {org.data?.logo_url ? (
+          <img src={org.data.logo_url} alt="" className="h-10 w-10 rounded-lg object-contain bg-white" />
+        ) : null}
+        <div className="min-w-0">
+          <div className="text-xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Organization</div>
+          <div className="text-sm font-semibold mt-0.5 truncate">{org.data?.name}</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{org.data?.slug}</div>
+        </div>
       </div>
       <nav className="p-3 space-y-1 flex-1 overflow-y-auto">
         {items.map((it) => (
@@ -74,7 +79,12 @@ export default function OrgLayout() {
         <button onClick={() => setOpen(true)} aria-label="Open menu" className="p-2 -ml-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white">
           <Menu size={22} />
         </button>
-        <div className="font-semibold text-sm truncate max-w-[60%]">{org.data?.name}</div>
+        <div className="flex items-center gap-2 min-w-0 max-w-[60%]">
+          {org.data?.logo_url ? (
+            <img src={org.data.logo_url} alt="" className="h-7 w-7 rounded-md object-contain bg-white shrink-0" />
+          ) : null}
+          <div className="font-semibold text-sm truncate">{org.data?.name}</div>
+        </div>
         <div className="w-9" />
       </header>
 

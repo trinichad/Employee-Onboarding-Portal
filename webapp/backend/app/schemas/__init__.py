@@ -98,6 +98,7 @@ class OrganizationOut(ORMModel):
     from_email: str = ""
     from_name: str = ""
     dashboard_columns: Optional[List[str]] = None
+    logo_url: Optional[str] = None
     created_at: datetime
 
 
@@ -257,6 +258,7 @@ class AuditOut(ORMModel):
     action: str
     target_type: Optional[str]
     target_id: Optional[str]
+    target_label: Optional[str] = None
     meta: Dict[str, Any]
     created_at: datetime
 
@@ -294,6 +296,7 @@ class PlatformSettingsOut(SmtpConfigOut):
     backend_port: int = 8000
     runtime_env_path: str = ""
     runtime_env_writable: bool = False
+    logo_url: Optional[str] = None
 
 
 class PlatformSettingsUpdate(SmtpConfigUpdate):

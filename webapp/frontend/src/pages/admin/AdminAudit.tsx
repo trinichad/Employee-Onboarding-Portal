@@ -28,7 +28,11 @@ export default function AdminAudit() {
                 <tr key={a.id}>
                   <td className="text-slate-500">{formatDateTime(a.created_at)}</td>
                   <td><code className="text-xs">{a.action}</code></td>
-                  <td className="text-xs">{a.target_type ? `${a.target_type}#${a.target_id}` : "—"}</td>
+                  <td className="text-xs">{a.target_type ? (
+                    a.target_label
+                      ? <span title={`${a.target_type}#${a.target_id}`}>{a.target_label}</span>
+                      : `${a.target_type}#${a.target_id}`
+                  ) : "—"}</td>
                   <td>{orgs.data?.find((o) => o.id === a.organization_id)?.name || (a.organization_id ?? "—")}</td>
                   <td>{a.actor_email ? (
                     <span title={a.actor_name || undefined}>{a.actor_email}</span>

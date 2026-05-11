@@ -4,9 +4,10 @@ import { api } from "@/api/client";
 export interface PublicConfig {
   platform_name: string;
   timezone: string;
+  logo_url?: string | null;
 }
 
-const DEFAULT_CONFIG: PublicConfig = { platform_name: "Employee Onboarding Portal", timezone: "UTC" };
+const DEFAULT_CONFIG: PublicConfig = { platform_name: "Employee Onboarding Portal", timezone: "UTC", logo_url: null };
 
 let _cache: PublicConfig = DEFAULT_CONFIG;
 let _loaded = false;
@@ -25,8 +26,29 @@ export async function loadPlatformConfig(force = false): Promise<PublicConfig> {
     _cache = DEFAULT_CONFIG;
   }
   _loaded = true;
+  applyFavicon(_cache.logo_url);
+  applyDocumentTitle(_cache.platform_name);
   for (const fn of _listeners) fn(_cache);
   return _cache;
+}
+
+/** Point the document <link rel="icon"> at the platform logo when present.
+ *  When cleared, restores the built-in vite icon. */
+function applyFavicon(url: string | null | undefined): void {
+  if (typeof document === "undefined") return;
+  // Cache-bust so an updated logo replaces the previously-cached favicon.
+  const href = url ? `${url}?t=${Date.now()}` : "/vite.svg";
+  let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "icon";
+    document.head.appendChild(link);
+  }
+  link.href = href;
+}
+
+function applyDocumentTitle(name: string): void {
+  if (typeof document !== "undefined" && name) document.title = name;
 }
 
 export function usePlatformConfig(): PublicConfig {

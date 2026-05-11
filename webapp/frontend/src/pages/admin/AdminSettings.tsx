@@ -298,9 +298,77 @@ export default function AdminSettings() {
       </div>
 
       <div className="mt-6 grid md:grid-cols-2 gap-4">
+        <PlatformLogoCard
+          logoUrl={settings.data?.logo_url || null}
+          onChanged={async () => {
+            await qc.invalidateQueries({ queryKey: ["admin.settings"] });
+            await loadPlatformConfig(true);
+          }}
+        />
         <DatabaseBackupCard />
       </div>
     </>
+  );
+}
+
+function PlatformLogoCard({ logoUrl, onChanged }: { logoUrl: string | null; onChanged: () => Promise<void> | void }) {
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [previewBust, setPreviewBust] = useState(0);
+
+  const onPick = () => fileRef.current?.click();
+  const onUpload = async (f: File) => {
+    if (!f) return;
+    setBusy(true);
+    try {
+      await adminApi.uploadPlatformLogo(f);
+      setPreviewBust(Date.now());
+      await onChanged();
+      toast.success("Logo updated");
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+  const onRemove = async () => {
+    setBusy(true);
+    try {
+      await adminApi.deletePlatformLogo();
+      await onChanged();
+      toast.success("Logo removed");
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const src = logoUrl ? `${logoUrl}?v=${previewBust || "x"}` : null;
+  return (
+    <div className="card">
+      <div className="card-header"><h3 className="font-semibold">Platform logo</h3></div>
+      <div className="card-body space-y-3">
+        <p className="help">Shown in the admin console sidebar and used as the browser favicon. PNG, JPG, WEBP, SVG, GIF, or ICO. Max 2 MB.</p>
+        <div className="flex items-center gap-4">
+          <div className="h-16 w-16 rounded-lg border border-slate-200 dark:border-slate-700 bg-white grid place-items-center overflow-hidden">
+            {src ? <img src={src} alt="" className="max-h-full max-w-full object-contain" /> : <span className="text-xs text-slate-400">No logo</span>}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif,image/vnd.microsoft.icon,image/x-icon"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void onUpload(f); }}
+            />
+            <button className="btn" disabled={busy} onClick={onPick}>{logoUrl ? "Replace…" : "Upload…"}</button>
+            {logoUrl ? <button className="btn-secondary" disabled={busy} onClick={onRemove}>Remove</button> : null}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
