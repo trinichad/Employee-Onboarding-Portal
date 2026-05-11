@@ -2,7 +2,7 @@ import { NavLink, Outlet, useNavigate, useParams, useLocation } from "react-rout
 import { useQuery } from "@tanstack/react-query";
 import clsx from "clsx";
 import { useEffect, useState } from "react";
-import { FileText, Home, LogOut, Menu, Settings, Settings2, User, Users, X } from "lucide-react";
+import { FileText, Home, LogOut, Menu, Settings, Settings2, Shield, User, Users, X } from "lucide-react";
 import { orgApi } from "@/api";
 import { useAuth } from "@/auth/AuthContext";
 import { useApplyTheme } from "@/auth/ThemeContext";
@@ -53,6 +53,15 @@ export default function OrgLayout() {
         </div>
       </div>
       <nav className="p-3 space-y-1 flex-1 overflow-y-auto">
+        {user?.role === "global_admin" && (
+          <NavLink
+            to="/admin"
+            className="nav-link bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/30 mb-2"
+            title="Return to the global admin console"
+          >
+            <Shield size={16} /> Back to admin console
+          </NavLink>
+        )}
         {items.map((it) => (
           <NavLink key={it.to} to={it.to} end={it.end}
             className={({ isActive }) => clsx("nav-link", isActive && "nav-link-active")}>
