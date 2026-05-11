@@ -128,3 +128,51 @@ def reset_user_password(user_id: int, bound=Depends(require_org_admin), db: Sess
     audit(db, actor_id=current.user.id, action="user.force_password_reset", organization_id=org.id,
           target_type="user", target_id=user.id)
     db.commit()
+
+
+@router.post("/{user_id}/resend-invite", status_code=204, response_class=Response)
+def resend_invite(user_id: int, bound=Depends(require_org_admin), db: Session = Depends(get_db)):
+    """Re-issue an invite to a user in this org who hasn't completed setup yet."""
+    org, current = bound
+    user = db.get(User, user_id)
+    if not user or user.organization_id != org.id:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.password_hash:
+        raise HTTPException(status_code=400, detail="User has already completed account setup")
+
+    now = _now()
+    pending = (
+        db.query(InviteToken)
+        .filter(
+            InviteToken.email == user.email,
+            InviteToken.organization_id == org.id,
+            InviteToken.used_at.is_(None),
+        )
+        .all()
+    )
+    for tok in pending:
+        tok.used_at = now
+
+    token = secrets.token_urlsafe(32)
+    db.add(InviteToken(
+        token=token, email=user.email, organization_id=org.id, role=user.role,
+        invited_by_id=current.user.id, expires_at=now + timedelta(days=7),
+    ))
+    addr, name = org_sender(db, org)
+    from app.services.runtime import public_base_url
+    try:
+        invite_email(user.email, org.name,
+                     f"{public_base_url(db)}/{org.slug}/accept?token={token}",
+                     from_addr=addr, from_name=name, smtp=org_smtp(db, org),
+                     raise_on_error=True)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"Invite email could not be delivered: {exc}. "
+                "Verify SMTP and From address in Settings, then try again."
+            ),
+        )
+    audit(db, actor_id=current.user.id, action="user.resend_invite", organization_id=org.id,
+          target_type="user", target_id=user.id)
+    db.commit()

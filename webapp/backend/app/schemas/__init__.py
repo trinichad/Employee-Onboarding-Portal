@@ -148,6 +148,7 @@ class UserOut(ORMModel):
     last_login_at: Optional[datetime]
     created_at: datetime
     totp_enrolled: bool = False
+    has_password: bool = False
     theme: str = "light"
 
     @model_validator(mode="after")

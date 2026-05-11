@@ -98,6 +98,11 @@ class User(Base):
         return bool(self.totp_secret_enc and self.totp_enrolled_at)
 
     @property
+    def has_password(self) -> bool:  # consumed by Pydantic UserOut
+        # True once the user has set their password (i.e. accepted their invite).
+        return bool(self.password_hash)
+
+    @property
     def organization_slug(self) -> Optional[str]:  # consumed by Pydantic UserOut
         return self.organization.slug if self.organization else None
 

@@ -12,6 +12,7 @@ export interface User {
   last_login_at: string | null;
   created_at: string;
   totp_enrolled?: boolean;
+  has_password?: boolean;
   theme?: "light" | "dark" | "system";
 }
 

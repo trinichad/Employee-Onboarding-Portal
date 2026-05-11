@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import toast from "react-hot-toast";
-import { KeyRound, Plus, Trash2 } from "lucide-react";
+import { KeyRound, Plus, Trash2, Mail } from "lucide-react";
 import { orgApi } from "@/api";
 import { apiError } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
@@ -36,6 +36,12 @@ export default function OrgUsers() {
   const reset = useMutation({
     mutationFn: (uid: number) => orgApi.resetUserPassword(orgSlug, uid),
     onSuccess: () => toast.success("Reset link sent"),
+    onError: (e) => toast.error(apiError(e)),
+  });
+
+  const resendInvite = useMutation({
+    mutationFn: (uid: number) => orgApi.resendUserInvite(orgSlug, uid),
+    onSuccess: () => toast.success("Invite resent"),
     onError: (e) => toast.error(apiError(e)),
   });
 
@@ -80,6 +86,14 @@ export default function OrgUsers() {
                       title={isAdminRow ? "Admins always approve" : "Allow this user to approve requests"}
                       checked={isAdminRow || !!u.can_approve_requests}
                       onChange={(e) => toggleApprover.mutate({ uid: u.id, can_approve: e.target.checked })}
+                    {!u.has_password && (
+                      <button
+                        className="btn-ghost"
+                        disabled={resendInvite.isPending}
+                        title="Send a new invite link to this user"
+                        onClick={() => resendInvite.mutate(u.id)}
+                      ><Mail size={14} /> Resend invite</button>
+                    )}
                     />
                   </td>
                   <td>

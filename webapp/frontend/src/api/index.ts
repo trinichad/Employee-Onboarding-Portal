@@ -81,6 +81,7 @@ export const adminApi = {
   listAllUsers: (params?: { organization_id?: number; role?: Role }) =>
     api.get<User[]>("/admin/users", { params }).then(r => r.data),
   forceResetUserPassword: (userId: number) => api.post(`/admin/users/${userId}/reset-password`),
+  resendUserInvite: (userId: number) => api.post(`/admin/users/${userId}/resend-invite`),
   setUserPassword: (userId: number, new_password: string) =>
     api.post(`/admin/users/${userId}/password`, { new_password }),
   deleteUser: (userId: number) => api.delete(`/admin/users/${userId}`),
@@ -131,6 +132,7 @@ export const orgApi = {
   updateUser: (slug: string, userId: number, data: Partial<{ full_name: string; is_active: boolean; role: Role; can_approve_requests: boolean }>) =>
     api.patch<User>(`/orgs/${slug}/users/${userId}`, data).then(r => r.data),
   deleteUser: (slug: string, userId: number) => api.delete(`/orgs/${slug}/users/${userId}`),
+  resendUserInvite: (slug: string, userId: number) => api.post(`/orgs/${slug}/users/${userId}/resend-invite`),
   resetUserPassword: (slug: string, userId: number) => api.post(`/orgs/${slug}/users/${userId}/reset-password`),
 
   getForm: (slug: string) => api.get<FormSchemaResp>(`/orgs/${slug}/form`).then(r => r.data),

@@ -27,6 +27,12 @@ export default function AdminUsers() {
     onError: (e) => toast.error(apiError(e)),
   });
 
+  const resendInvite = useMutation({
+    mutationFn: (uid: number) => adminApi.resendUserInvite(uid),
+    onSuccess: () => toast.success("Invite resent"),
+    onError: (e) => toast.error(apiError(e)),
+  });
+
   const reset2fa = useMutation({
     mutationFn: (uid: number) => adminApi.resetUserTotp(uid),
     onSuccess: () => { toast.success("2FA cleared — user must re-enroll on next sign-in"); invalidateUsers(); },
@@ -126,6 +132,14 @@ export default function AdminUsers() {
                   <td>{orgName(u.organization_id)}</td>
                   <td>{u.is_active ? "yes" : "no"}</td>
                   <td className="text-right whitespace-nowrap">
+                    {!u.has_password && (
+                      <button
+                        className="btn-ghost"
+                        disabled={resendInvite.isPending}
+                        title="Send a new invite link to this user"
+                        onClick={() => resendInvite.mutate(u.id)}
+                      >Resend invite</button>
+                    )}
                     <button className="btn-ghost" onClick={() => reset.mutate(u.id)}>Reset password</button>
                     <button className="btn-ghost" onClick={() => { setPwUser(u); setNewPw(""); }}>Change password</button>
                     <button

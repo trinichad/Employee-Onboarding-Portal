@@ -421,6 +421,72 @@ def admin_set_password(
     db.commit()
 
 
+@router.post("/users/{user_id}/resend-invite", status_code=204, response_class=Response)
+def admin_resend_invite(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_global_admin),
+):
+    """Send a fresh invite link to a user who hasn't yet accepted theirs.
+
+    Refuses if the user has already set a password (i.e. completed setup).
+    Any prior unused invite tokens for this user are invalidated so only the
+    newly-issued link works.
+    """
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.password_hash:
+        raise HTTPException(status_code=400, detail="User has already completed account setup")
+
+    org: Optional[Organization] = None
+    if user.organization_id:
+        org = db.get(Organization, user.organization_id)
+
+    # Invalidate any outstanding unused invite tokens for this user.
+    now = _now()
+    pending = (
+        db.query(InviteToken)
+        .filter(
+            InviteToken.email == user.email,
+            InviteToken.organization_id == user.organization_id,
+            InviteToken.used_at.is_(None),
+        )
+        .all()
+    )
+    for tok in pending:
+        tok.used_at = now
+
+    token = secrets.token_urlsafe(32)
+    db.add(InviteToken(
+        token=token, email=user.email, organization_id=user.organization_id, role=user.role,
+        invited_by_id=current.user.id, expires_at=now + timedelta(days=7),
+    ))
+    from app.services.runtime import public_base_url as _pbu
+    if org:
+        invite_url = f"{_pbu(db)}/{org.slug}/accept?token={token}"
+        org_name = org.name
+    else:
+        invite_url = f"{_pbu(db)}/accept?token={token}"
+        org_name = None
+    addr, name = org_sender(db, org)
+    smtp = org_smtp(db, org)
+    try:
+        invite_email(user.email, org_name, invite_url, from_addr=addr, from_name=name,
+                     smtp=smtp, raise_on_error=True)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"Invite email could not be delivered: {exc}. "
+                "Verify SMTP and From address in Settings, then try again."
+            ),
+        )
+    audit(db, actor_id=current.user.id, action="admin.resend_invite",
+          organization_id=user.organization_id, target_type="user", target_id=user.id)
+    db.commit()
+
+
 @router.delete("/users/{user_id}", status_code=204, response_class=Response)
 def admin_delete_user(
     user_id: int,
