@@ -34,15 +34,15 @@ export default function AdminLayout() {
 
   const SidebarContent = (
     <>
-      <d{platform.logo_url ? (
+      <div className="px-5 py-5 border-b border-slate-100 dark:border-slate-700 flex items-center gap-2">
+        {platform.logo_url ? (
           <img src={platform.logo_url} alt="" className="h-8 w-8 rounded-lg object-contain bg-white" />
         ) : (
           <div className="h-8 w-8 rounded-lg bg-brand-600 text-white grid place-items-center text-sm font-semibold">IT</div>
         )}
-        <div>
+        <div className="min-w-0">
           <div className="text-sm font-semibold">Admin Console</div>
-          <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{platform.platform_name}
-          <div className="text-xs text-slate-500 dark:text-slate-400">Global Administration</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{platform.platform_name}</div>
         </div>
       </div>
       <nav className="p-3 space-y-1 flex-1 overflow-y-auto">
@@ -69,16 +69,16 @@ export default function AdminLayout() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       {/* Mobile top bar */}
       <header className="md:hidden sticky top-0 z-30 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 h-14 flex items-center justify-between"
-        st{platform.logo_url ? (
-            <img src={platform.logo_url} alt="" className="h-7 w-7 rounded-md object-contain bg-white" />
-          ) : (
-            <div className="h-7 w-7 rounded-md bg-brand-600 text-white grid place-items-center text-xs">IT</div>
-          )}
+        style={{ paddingTop: "env(safe-area-inset-top)" }}>
         <button onClick={() => setOpen(true)} aria-label="Open menu" className="p-2 -ml-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white">
           <Menu size={22} />
         </button>
         <div className="flex items-center gap-2 font-semibold text-sm">
-          <div className="h-7 w-7 rounded-md bg-brand-600 text-white grid place-items-center text-xs">IT</div>
+          {platform.logo_url ? (
+            <img src={platform.logo_url} alt="" className="h-7 w-7 rounded-md object-contain bg-white" />
+          ) : (
+            <div className="h-7 w-7 rounded-md bg-brand-600 text-white grid place-items-center text-xs">IT</div>
+          )}
           Admin Console
         </div>
         <div className="w-9" />
