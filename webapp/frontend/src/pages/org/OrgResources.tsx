@@ -152,10 +152,10 @@ export default function OrgResources() {
           if (!src.linked_keys.length) continue;
           const target = byKey.get(`${src.kind}::${src.name.toLowerCase()}`);
           if (!target) continue;
-          const ids = src.linked_keys
-            .map((k: any) => byKey.get(`${String(k?.kind || "").trim()}::${String(k?.name || "").trim().toLowerCase()}`))
-            .filter((x): x is OrgResource => !!x)
-            .map((x) => x.id);
+          const ids: number[] = src.linked_keys
+            .map((k: any): OrgResource | undefined => byKey.get(`${String(k?.kind || "").trim()}::${String(k?.name || "").trim().toLowerCase()}`))
+            .filter((x: OrgResource | undefined): x is OrgResource => !!x)
+            .map((x: OrgResource) => x.id);
           if (ids.length === 0) continue;
           await orgApi.updateResource(orgSlug, target.id, { linked_resource_ids: ids });
           linked++;
