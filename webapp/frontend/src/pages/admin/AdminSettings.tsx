@@ -363,7 +363,7 @@ function PlatformLogoCard({ logoUrl, onChanged }: { logoUrl: string | null; onCh
               className="hidden"
               onChange={(e) => { const f = e.target.files?.[0]; if (f) void onUpload(f); }}
             />
-            <button className="btn" disabled={busy} onClick={onPick}>{logoUrl ? "Replace…" : "Upload…"}</button>
+            <button className="btn-primary" disabled={busy} onClick={onPick}>{logoUrl ? "Replace…" : "Upload…"}</button>
             {logoUrl ? <button className="btn-secondary" disabled={busy} onClick={onRemove}>Remove</button> : null}
           </div>
         </div>

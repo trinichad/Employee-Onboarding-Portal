@@ -587,31 +587,40 @@ def list_audit(
             actors[u.id] = u
 
     # Resolve human-friendly labels for targets we can identify by id.
+    # Newer audit rows snapshot the label into meta["target_label"] at write
+    # time so it remains accurate even after the target is deleted (and its
+    # primary key potentially reused by a new row). For older rows that lack
+    # a snapshot, fall back to a live DB lookup — but only if the entity's
+    # creation timestamp precedes the audit, so we don't mis-label an audit
+    # for a deleted entity whose id was later reused.
     def _ids_for(t: str) -> set[int]:
         out: set[int] = set()
         for r in rows:
-            if r.target_type == t and r.target_id is not None:
-                try:
-                    out.add(int(r.target_id))
-                except (TypeError, ValueError):
-                    pass
+            if r.target_type != t or r.target_id is None:
+                continue
+            if isinstance(r.meta, dict) and r.meta.get("target_label"):
+                continue
+            try:
+                out.add(int(r.target_id))
+            except (TypeError, ValueError):
+                pass
         return out
 
     user_target_ids = _ids_for("user")
     org_target_ids = _ids_for("organization")
     req_target_ids = _ids_for("employee_request")
-    user_labels: dict[int, str] = {}
+    users_by_id: dict[int, User] = {}
     if user_target_ids:
         for u in db.query(User).filter(User.id.in_(user_target_ids)).all():
-            user_labels[u.id] = u.email
-    org_labels: dict[int, str] = {}
+            users_by_id[u.id] = u
+    orgs_by_id: dict[int, Organization] = {}
     if org_target_ids:
         for o in db.query(Organization).filter(Organization.id.in_(org_target_ids)).all():
-            org_labels[o.id] = o.name
-    req_labels: dict[int, str] = {}
+            orgs_by_id[o.id] = o
+    reqs_by_id: dict[int, EmployeeRequest] = {}
     if req_target_ids:
         for r in db.query(EmployeeRequest).filter(EmployeeRequest.id.in_(req_target_ids)).all():
-            req_labels[r.id] = r.subject or f"Request #{r.id}"
+            reqs_by_id[r.id] = r
 
     out: List[AuditOut] = []
     for a in rows:
@@ -620,18 +629,37 @@ def list_audit(
         if u is not None:
             item.actor_email = u.email
             item.actor_name = u.full_name or None
-        if a.target_type and a.target_id is not None:
+        # Prefer the snapshot stored at write time.
+        meta = a.meta if isinstance(a.meta, dict) else {}
+        snap = meta.get("target_label") if meta else None
+        if snap:
+            item.target_label = str(snap)
+        elif a.target_type and a.target_id is not None:
             try:
                 tid = int(a.target_id)
             except (TypeError, ValueError):
                 tid = None
             if tid is not None:
+                ent = None
+                label: Optional[str] = None
                 if a.target_type == "user":
-                    item.target_label = user_labels.get(tid)
+                    ent = users_by_id.get(tid)
+                    if ent is not None:
+                        label = ent.full_name or ent.email or None
                 elif a.target_type == "organization":
-                    item.target_label = org_labels.get(tid)
+                    ent = orgs_by_id.get(tid)
+                    if ent is not None:
+                        label = ent.name or None
                 elif a.target_type == "employee_request":
-                    item.target_label = req_labels.get(tid)
+                    ent = reqs_by_id.get(tid)
+                    if ent is not None:
+                        label = ent.subject or f"Request #{ent.id}"
+                # Guard against primary-key reuse: only use a live lookup when
+                # the entity existed before this audit row was written.
+                if ent is not None and label:
+                    created = getattr(ent, "created_at", None)
+                    if created is None or created <= a.created_at:
+                        item.target_label = label
         out.append(item)
     return out
 
