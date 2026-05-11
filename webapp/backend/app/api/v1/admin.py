@@ -6,6 +6,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, File
 from slugify import slugify
+from sqlalchemy import String, cast, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -572,14 +573,47 @@ def get_request_detail(request_id: int, db: Session = Depends(get_db)) -> dict:
 
 @router.get("/audit", response_model=List[AuditOut])
 def list_audit(
+    response: Response,
     db: Session = Depends(get_db),
     organization_id: Optional[int] = Query(None),
-    limit: int = Query(200, le=1000),
+    limit: int = Query(20, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    search: Optional[str] = Query(None),
 ) -> List[AuditOut]:
     q = db.query(AuditLog)
     if organization_id is not None:
         q = q.filter(AuditLog.organization_id == organization_id)
-    rows = q.order_by(AuditLog.created_at.desc()).limit(limit).all()
+    term = (search or "").strip()
+    if term:
+        like = f"%{term.lower()}%"
+        # Actor lookup as a subquery so we can match email/full_name without
+        # forcing a join (some audit rows have no actor).
+        actor_match = (
+            db.query(User.id)
+            .filter(or_(func.lower(User.email).like(like), func.lower(User.full_name).like(like)))
+        )
+        # Org name match (matches when the row's organization_id is in this set).
+        org_match = db.query(Organization.id).filter(func.lower(Organization.name).like(like))
+        conditions = [
+            func.lower(AuditLog.action).like(like),
+            func.lower(func.coalesce(AuditLog.target_type, "")).like(like),
+            func.lower(func.coalesce(AuditLog.target_id, "")).like(like),
+            # Catches target_label and any other JSON meta values (stringified).
+            func.lower(cast(AuditLog.meta, String)).like(like),
+            # Date / time as ISO-ish text, e.g. "2026-05-11" or "10:30".
+            func.lower(cast(AuditLog.created_at, String)).like(like),
+            AuditLog.actor_id.in_(actor_match),
+            AuditLog.organization_id.in_(org_match),
+        ]
+        q = q.filter(or_(*conditions))
+    total = q.with_entities(func.count(AuditLog.id)).scalar() or 0
+    response.headers["X-Total-Count"] = str(int(total))
+    rows = (
+        q.order_by(AuditLog.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     actor_ids = {r.actor_id for r in rows if r.actor_id is not None}
     actors: dict[int, User] = {}
     if actor_ids:

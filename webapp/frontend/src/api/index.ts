@@ -104,8 +104,11 @@ export const adminApi = {
       submitter: { id: number; full_name: string; email: string } | null;
       schema: any;
     }>(`/admin/requests/${id}`).then(r => r.data),
-  audit: (params?: { organization_id?: number }) =>
-    api.get<AuditEntry[]>("/admin/audit", { params }).then(r => r.data),
+  audit: (params?: { organization_id?: number; limit?: number; offset?: number; search?: string }) =>
+    api.get<AuditEntry[]>("/admin/audit", { params }).then(r => ({
+      items: r.data,
+      total: Number(r.headers["x-total-count"] ?? r.data.length),
+    })),
   getSettings: () =>
     api.get<PlatformSettings>("/admin/settings").then(r => r.data),
   updateSettings: (data: Partial<{ platform_name: string; default_support_email: string; default_from_email: string; default_from_name: string; default_dashboard_columns: string[]; timezone: string; public_base_url: string; backend_port: number }> & SmtpConfigUpdate) =>
