@@ -55,12 +55,62 @@ export default function OrgFormBuilder() {
     } else save.mutate(doc);
   };
 
+  const importRef = useRef<HTMLInputElement | null>(null);
+  const onExport = () => {
+    const slug = orgSlug || "form";
+    const stamp = new Date().toISOString().slice(0, 10);
+    const json = tab === "json" ? jsonText : JSON.stringify(doc, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `form-${slug}-v${form.data?.version ?? 0}-${stamp}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  };
+  const onImportPick = () => importRef.current?.click();
+  const onImportFile = async (file: File) => {
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!parsed || typeof parsed !== "object") throw new Error("File must contain a JSON object");
+      // Accept either the raw schema doc or a wrapped { schema: ... } export.
+      const next: FormSchemaDoc = (parsed.schema && typeof parsed.schema === "object") ? parsed.schema : parsed;
+      if (!Array.isArray(next.fields) && !Array.isArray(next.groups)) {
+        throw new Error("File does not look like a form schema (missing fields/groups)");
+      }
+      if (!window.confirm("Replace the current form draft with the contents of this file? You'll still need to click \"Save new version\" to publish.")) {
+        return;
+      }
+      setDoc(next);
+      setJsonText(JSON.stringify(next, null, 2));
+      toast.success("Form loaded — review and click \"Save new version\" to publish.");
+    } catch (e: any) {
+      toast.error("Invalid form file: " + (e?.message || String(e)));
+    } finally {
+      if (importRef.current) importRef.current.value = "";
+    }
+  };
+
   if (form.isLoading) return <Spinner />;
 
   return (
     <>
       <PageHeader title="Form Builder" description={`Active version: v${form.data?.version}`}
-        actions={<button className="btn-primary" disabled={save.isPending} onClick={handleSave}>{save.isPending ? "Saving…" : "Save new version"}</button>} />
+        actions={
+          <div className="flex gap-2">
+            <input
+              ref={importRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void onImportFile(f); }}
+            />
+            <button className="btn-secondary" onClick={onImportPick} title="Replace the current draft with a previously exported form file">Import…</button>
+            <button className="btn-secondary" onClick={onExport} title="Download the current form as JSON">Export</button>
+            <button className="btn-primary" disabled={save.isPending} onClick={handleSave}>{save.isPending ? "Saving…" : "Save new version"}</button>
+          </div>
+        } />
 
       <div className="flex gap-2 border-b border-slate-200 mb-4">
         {(["editor", "json", "preview"] as const).map((t) => (
@@ -423,6 +473,21 @@ function GroupsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSch
     const n = groups.slice(); n[i] = { ...n[i], ...patch };
     setDoc({ ...doc, groups: n });
   };
+  const moveGroup = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= groups.length) return;
+    const next = groups.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    setDoc({ ...doc, groups: next });
+  };
+  const moveItem = (gi: number, ii: number, dir: -1 | 1) => {
+    const g = groups[gi];
+    const j = ii + dir;
+    if (j < 0 || j >= g.items.length) return;
+    const items = g.items.slice();
+    [items[ii], items[j]] = [items[j], items[ii]];
+    setGroup(gi, { items });
+  };
   const addItem = (gi: number) => setGroup(gi, { items: [...groups[gi].items, { id: `item_${groups[gi].items.length + 1}`, label: "New item" }] });
   return (
     <div className="card">
@@ -439,10 +504,12 @@ function GroupsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSch
       <div className="card-body space-y-4">
         {groups.map((g, i) => (
           <div key={i} className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-2">
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
               <input className="input" value={g.title} onChange={(e) => setGroup(i, { title: e.target.value })} placeholder="Group title" />
               <input className="input max-w-[160px]" value={g.id} onChange={(e) => setGroup(i, { id: e.target.value })} placeholder="id" />
               <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={g.enabled} onChange={(e) => setGroup(i, { enabled: e.target.checked })} /> enabled</label>
+              <button className="btn-ghost text-xs" onClick={() => moveGroup(i, -1)} disabled={i === 0} title="Move group up">↑</button>
+              <button className="btn-ghost text-xs" onClick={() => moveGroup(i, 1)} disabled={i === groups.length - 1} title="Move group down">↓</button>
               <button className="btn-ghost text-red-600" onClick={() => setDoc({ ...doc, groups: groups.filter((_, j) => j !== i) })}>Remove</button>
             </div>
 
@@ -454,11 +521,15 @@ function GroupsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSch
 
             <div className="space-y-1">
               {g.items.map((it, j) => (
-                <div key={j} className="grid grid-cols-12 gap-2">
+                <div key={j} className="grid grid-cols-12 gap-2 items-center">
                   <input className="input col-span-3" value={it.id} onChange={(e) => setGroup(i, { items: g.items.map((x, k) => k === j ? { ...x, id: e.target.value } : x) })} />
                   <input className="input col-span-4" value={it.label} onChange={(e) => setGroup(i, { items: g.items.map((x, k) => k === j ? { ...x, label: e.target.value } : x) })} />
-                  <input className="input col-span-4" placeholder="description" value={it.description || ""} onChange={(e) => setGroup(i, { items: g.items.map((x, k) => k === j ? { ...x, description: e.target.value } : x) })} />
-                  <button className="btn-ghost text-red-600 col-span-1" onClick={() => setGroup(i, { items: g.items.filter((_, k) => k !== j) })}>×</button>
+                  <input className="input col-span-3" placeholder="description" value={it.description || ""} onChange={(e) => setGroup(i, { items: g.items.map((x, k) => k === j ? { ...x, description: e.target.value } : x) })} />
+                  <div className="col-span-2 flex justify-end gap-1">
+                    <button className="btn-ghost text-xs" onClick={() => moveItem(i, j, -1)} disabled={j === 0} title="Move item up">↑</button>
+                    <button className="btn-ghost text-xs" onClick={() => moveItem(i, j, 1)} disabled={j === g.items.length - 1} title="Move item down">↓</button>
+                    <button className="btn-ghost text-red-600 text-xs" onClick={() => setGroup(i, { items: g.items.filter((_, k) => k !== j) })} title="Remove">×</button>
+                  </div>
                 </div>
               ))}
               <button className="btn-ghost text-sm" onClick={() => addItem(i)}>+ Add item</button>

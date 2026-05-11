@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -104,6 +104,74 @@ export default function OrgResources() {
     onError: (e) => toast.error(apiError(e)),
   });
 
+  // ---- JSON import / export (backup & template) -----------------------------
+  const jsonImportRef = useRef<HTMLInputElement | null>(null);
+  const onImportJsonFile = async (file: File) => {
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const rows: any[] = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.resources)
+          ? parsed.resources
+          : null;
+      if (!rows) throw new Error("File must contain an array of resources (or { resources: [...] })");
+      const cleaned = rows
+        .map((r: any) => ({
+          kind: String(r?.kind || "").trim(),
+          name: String(r?.name || "").trim(),
+          attributes: (r?.attributes && typeof r.attributes === "object") ? r.attributes : {},
+          linked_keys: Array.isArray(r?.linked_keys) ? r.linked_keys : [],
+          is_active: r?.is_active !== undefined ? !!r.is_active : true,
+        }))
+        .filter((r) => r.kind && r.name);
+      if (cleaned.length === 0) throw new Error("No resources found in file");
+      if (!window.confirm(
+        `Import ${cleaned.length} resource(s) from this file? Existing entries with the same category + name will be updated; new ones will be created. Nothing is deleted.`,
+      )) return;
+
+      const t = toast.loading(`Importing ${cleaned.length} resource(s)…`);
+      try {
+        // Pass 1: upsert without links via bulk endpoint.
+        await orgApi.bulkResources(
+          orgSlug,
+          cleaned.map((r) => ({
+            action: "upsert" as const,
+            kind: r.kind,
+            name: r.name,
+            attributes: r.attributes,
+            is_active: r.is_active,
+          })),
+        );
+        // Pass 2: resolve linked_keys (array of {kind,name}) and patch each row.
+        const after = await orgApi.listResources(orgSlug, { include_inactive: true });
+        const byKey = new Map<string, OrgResource>();
+        for (const r of after) byKey.set(`${r.kind}::${r.name.toLowerCase()}`, r);
+        let linked = 0;
+        for (const src of cleaned) {
+          if (!src.linked_keys.length) continue;
+          const target = byKey.get(`${src.kind}::${src.name.toLowerCase()}`);
+          if (!target) continue;
+          const ids = src.linked_keys
+            .map((k: any) => byKey.get(`${String(k?.kind || "").trim()}::${String(k?.name || "").trim().toLowerCase()}`))
+            .filter((x): x is OrgResource => !!x)
+            .map((x) => x.id);
+          if (ids.length === 0) continue;
+          await orgApi.updateResource(orgSlug, target.id, { linked_resource_ids: ids });
+          linked++;
+        }
+        toast.success(`Imported ${cleaned.length} resource(s)${linked ? ` (relinked ${linked})` : ""}`, { id: t });
+        qc.invalidateQueries({ queryKey: ["org.resources", orgSlug] });
+      } catch (e) {
+        toast.error(apiError(e), { id: t });
+      }
+    } catch (e: any) {
+      toast.error("Invalid resources file: " + (e?.message || String(e)));
+    } finally {
+      if (jsonImportRef.current) jsonImportRef.current.value = "";
+    }
+  };
+
   if (list.isLoading) return <Spinner />;
 
   const kindMeta = KINDS.find((k) => k.value === activeKind) || KINDS[0];
@@ -117,6 +185,13 @@ export default function OrgResources() {
         description="Things you can reference in the form: properties, mailboxes, folders, drives. Properties can link to their mailboxes/folders/drives so the form auto-fills."
         actions={
           <div className="flex gap-2">
+            <input
+              ref={jsonImportRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) void onImportJsonFile(f); }}
+            />
             <button className="btn-secondary" onClick={() => setManageKindsOpen(true)} title="Add, rename, or remove categories">
               <Settings2 size={16} /> Manage categories
             </button>
@@ -125,6 +200,12 @@ export default function OrgResources() {
             </button>
             <button className="btn-secondary" onClick={() => downloadCsv(list.data || [], safeActiveKind, KINDS)} title="Download current entries as CSV">
               <Download size={16} /> Export CSV
+            </button>
+            <button className="btn-secondary" onClick={() => jsonImportRef.current?.click()} title="Import all resources from a JSON backup file">
+              <Upload size={16} /> Import JSON
+            </button>
+            <button className="btn-secondary" onClick={() => exportResourcesJson(list.data || [], orgSlug)} title="Download all resources as JSON (backup / template)">
+              <Download size={16} /> Export JSON
             </button>
             <button className="btn-primary" onClick={() => setEditing({ kind: safeActiveKind, name: "", attributes: {}, linked_resource_ids: [], is_active: true })}>
               <Plus size={16} /> Add {(kindMeta?.label || "resource").toLowerCase()}
@@ -364,6 +445,35 @@ function downloadCsv(all: OrgResource[], kind: ResourceKind, kinds: KindDef[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = `resources-${kind}.csv`; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportResourcesJson(all: OrgResource[], orgSlug: string) {
+  // Build a (kind,name) lookup so we can serialize cross-resource links by
+  // stable key instead of by numeric id (which isn't portable between orgs).
+  const byId = new Map<number, OrgResource>();
+  for (const r of all) byId.set(r.id, r);
+  const payload = {
+    version: 1,
+    exported_at: new Date().toISOString(),
+    org_slug: orgSlug,
+    resources: all.map((r) => ({
+      kind: r.kind,
+      name: r.name,
+      attributes: r.attributes || {},
+      is_active: r.is_active,
+      linked_keys: (r.linked_resource_ids || [])
+        .map((id) => byId.get(id))
+        .filter((x): x is OrgResource => !!x)
+        .map((x) => ({ kind: x.kind, name: x.name })),
+    })),
+  };
+  const stamp = new Date().toISOString().slice(0, 10);
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `resources-${orgSlug || "org"}-${stamp}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
 
