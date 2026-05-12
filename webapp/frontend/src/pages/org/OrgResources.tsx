@@ -242,7 +242,7 @@ export default function OrgResources() {
                 </div>
               </div>
               <dl className="text-xs space-y-0.5">
-                {meta.attrs.map((a) => {
+                {(KINDS.find((k) => k.value === r.kind)?.attrs || []).map((a) => {
                   const v = r.attributes?.[a.key];
                   if (v === undefined || v === null || v === "") return null;
                   return (
