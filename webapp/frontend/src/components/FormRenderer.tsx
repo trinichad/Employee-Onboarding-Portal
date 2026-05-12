@@ -73,6 +73,68 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
 
   function set(key: string, v: any) { setWithAutoFill(key, v); }
 
+  // ----- Auto-check group items from a resource attribute --------------------
+  // When a group item declares `auto_check_from: { source_field_id, attribute }`,
+  // reset the checkbox to the resource's attribute value whenever the source
+  // field's value changes. We seed `lastSourceRef` on mount so existing draft
+  // selections aren't overwritten on first render.
+  const lastSourceRef = useRef<Record<string, any> | null>(null);
+  const isTruthyAttr = (v: any): boolean => {
+    if (v === true) return true;
+    if (v === false || v === null || v === undefined) return false;
+    const s = String(v).trim().toLowerCase();
+    if (!s) return false;
+    if (["no", "false", "0", "n", "off", "-"].includes(s)) return false;
+    return true; // "yes", "true", "1", "x", or any other non-empty value
+  };
+  useEffect(() => {
+    if (!schema.groups || schema.groups.length === 0) return;
+    // First pass: seed last-seen source values so we don't overwrite the
+    // checkbox selections an admin already saved on this request.
+    if (lastSourceRef.current === null) {
+      const seed: Record<string, any> = {};
+      for (const g of schema.groups) {
+        if (!g.enabled || g.dynamic) continue;
+        for (const it of g.items || []) {
+          const acf = it.auto_check_from;
+          if (!acf?.source_field_id) continue;
+          seed[`${g.id}|${it.id}|${acf.source_field_id}`] = values[acf.source_field_id];
+        }
+      }
+      lastSourceRef.current = seed;
+      return;
+    }
+    // Subsequent passes: detect any source-field changes and reapply defaults.
+    let nextGroups: Record<string, any> | null = null;
+    const ref = lastSourceRef.current;
+    for (const g of schema.groups) {
+      if (!g.enabled || g.dynamic) continue;
+      for (const it of g.items || []) {
+        const acf = it.auto_check_from;
+        if (!acf?.source_field_id || !acf?.attribute) continue;
+        const sid = acf.source_field_id;
+        const cur = values[sid];
+        const key = `${g.id}|${it.id}|${sid}`;
+        if (ref[key] === cur) continue;
+        ref[key] = cur;
+        const sourceField = fields.find((x) => x.id === sid);
+        let defaultChecked = false;
+        if (sourceField?.type === "resource") {
+          const r = allResources.find((x) => x.id === Number(cur));
+          if (r) defaultChecked = isTruthyAttr(r.attributes?.[acf.attribute]);
+        } else if (cur !== undefined && cur !== null && cur !== "") {
+          defaultChecked = isTruthyAttr(cur);
+        }
+        if (!nextGroups) nextGroups = { ...(values._groups || {}) };
+        nextGroups[g.id] = { ...(nextGroups[g.id] || {}), [it.id]: defaultChecked };
+      }
+    }
+    if (nextGroups) {
+      onChange({ ...values, _groups: nextGroups });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values, allResources, schema.groups]);
+
   function setNested(group: string, item: string, v: any) {
     const groups = { ...(values._groups || {}) };
     groups[group] = { ...(groups[group] || {}), [item]: v };

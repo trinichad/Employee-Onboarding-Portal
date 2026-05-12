@@ -69,7 +69,18 @@ export interface FormGroup {
   id: string;
   title: string;
   enabled: boolean;
-  items: { id: string; label: string; description?: string }[];
+  items: {
+    id: string;
+    label: string;
+    description?: string;
+    /** Auto-check this checkbox based on a truthy attribute on the resource
+     *  selected in `source_field_id`. The attribute value is read from
+     *  `resource.attributes[attribute]` and treated as truthy/falsy
+     *  ("yes"/"true"/"1"/"x" → checked; "no"/"false"/"0"/empty → unchecked).
+     *  Defaults reapply when the source value changes; the user is free to
+     *  toggle afterwards. Not applied in dynamic groups. */
+    auto_check_from?: { source_field_id: string; attribute: string };
+  }[];
   /** When set, this group is rendered once per "context resource". The group
    *  title and item labels may contain a placeholder (default "{Property}")
    *  which is substituted with the context resource's name. The default

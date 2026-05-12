@@ -553,18 +553,66 @@ function GroupsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSch
 
             <div className="space-y-1">
               {g.items.map((it, j) => (
-                <div key={j} className="grid grid-cols-12 gap-2 items-center">
-                  <input className="input col-span-3" value={it.id} onChange={(e) => setGroup(i, { items: g.items.map((x, k) => k === j ? { ...x, id: e.target.value } : x) })} />
-                  <input className="input col-span-4" value={it.label} onChange={(e) => setGroup(i, { items: g.items.map((x, k) => k === j ? { ...x, label: e.target.value } : x) })} />
-                  <input className="input col-span-3" placeholder="description" value={it.description || ""} onChange={(e) => setGroup(i, { items: g.items.map((x, k) => k === j ? { ...x, description: e.target.value } : x) })} />
-                  <div className="col-span-2 flex justify-end gap-1">
-                    <button className="btn-ghost text-xs" onClick={() => moveItem(i, j, -1)} disabled={j === 0} title="Move item up">↑</button>
-                    <button className="btn-ghost text-xs" onClick={() => moveItem(i, j, 1)} disabled={j === g.items.length - 1} title="Move item down">↓</button>
-                    <button className="btn-ghost text-red-600 text-xs" onClick={() => setGroup(i, { items: g.items.filter((_, k) => k !== j) })} title="Remove">×</button>
+                <div key={j} className="space-y-1">
+                  <div className="grid grid-cols-12 gap-2 items-center">
+                    <input className="input col-span-3" value={it.id} onChange={(e) => setGroup(i, { items: g.items.map((x, k) => k === j ? { ...x, id: e.target.value } : x) })} />
+                    <input className="input col-span-4" value={it.label} onChange={(e) => setGroup(i, { items: g.items.map((x, k) => k === j ? { ...x, label: e.target.value } : x) })} />
+                    <input className="input col-span-3" placeholder="description" value={it.description || ""} onChange={(e) => setGroup(i, { items: g.items.map((x, k) => k === j ? { ...x, description: e.target.value } : x) })} />
+                    <div className="col-span-2 flex justify-end gap-1">
+                      <button className="btn-ghost text-xs" onClick={() => moveItem(i, j, -1)} disabled={j === 0} title="Move item up">↑</button>
+                      <button className="btn-ghost text-xs" onClick={() => moveItem(i, j, 1)} disabled={j === g.items.length - 1} title="Move item down">↓</button>
+                      <button className="btn-ghost text-red-600 text-xs" onClick={() => setGroup(i, { items: g.items.filter((_, k) => k !== j) })} title="Remove">×</button>
+                    </div>
                   </div>
+                  {!g.dynamic && resourceFields.length > 0 && (
+                    <div className="pl-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <span>Auto-check based on:</span>
+                      <select
+                        className="input text-xs py-1"
+                        value={it.auto_check_from?.source_field_id || ""}
+                        onChange={(e) => {
+                          const sid = e.target.value;
+                          setGroup(i, {
+                            items: g.items.map((x, k) => k === j ? {
+                              ...x,
+                              auto_check_from: sid
+                                ? { source_field_id: sid, attribute: x.auto_check_from?.attribute || "" }
+                                : undefined,
+                            } : x),
+                          });
+                        }}
+                      >
+                        <option value="">(none — manual only)</option>
+                        {resourceFields.map((rf) => (
+                          <option key={rf.id} value={rf.id}>{rf.label || rf.id}</option>
+                        ))}
+                      </select>
+                      {it.auto_check_from?.source_field_id && (
+                        <>
+                          <span>resource attribute</span>
+                          <input
+                            className="input text-xs py-1 w-44 font-mono"
+                            placeholder="e.g. adobe_acrobat"
+                            value={it.auto_check_from.attribute || ""}
+                            onChange={(e) => setGroup(i, {
+                              items: g.items.map((x, k) => k === j ? {
+                                ...x,
+                                auto_check_from: { source_field_id: it.auto_check_from!.source_field_id, attribute: e.target.value },
+                              } : x),
+                            })}
+                          />
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
               <button className="btn-ghost text-sm" onClick={() => addItem(i)}>+ Add item</button>
+              {!g.dynamic && resourceFields.length > 0 && (
+                <p className="help mt-1">
+                  <strong>Auto-check tip:</strong> pick a resource field (e.g. <em>Title</em>) and an attribute key (e.g. <code>adobe_acrobat</code>). Set that attribute to <code>yes</code> / <code>true</code> / <code>x</code> on each resource (e.g. each Job Title) under <strong>Resources → Manage categories</strong>. The checkbox will tick automatically when a matching resource is selected.
+                </p>
+              )}
             </div>
           </div>
         ))}
