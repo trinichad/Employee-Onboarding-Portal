@@ -12,6 +12,10 @@ export function Modal({
   size?: "sm" | "md" | "lg" | "xl";
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  // Only close when the user both presses and releases on the backdrop
+  // itself. This prevents accidental closes when a drag (e.g. selecting
+  // text in an input) starts inside the modal and ends outside it.
+  const downOnBackdrop = useRef(false);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -23,7 +27,11 @@ export function Modal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/50 overflow-y-auto"
-      onClick={onClose}
+      onMouseDown={(e) => { downOnBackdrop.current = e.target === e.currentTarget; }}
+      onMouseUp={(e) => {
+        if (downOnBackdrop.current && e.target === e.currentTarget) onClose();
+        downOnBackdrop.current = false;
+      }}
     >
       <div
         ref={ref}
@@ -33,7 +41,6 @@ export function Modal({
           "max-h-[92vh] sm:max-h-[85vh] overflow-y-auto",
           sizes[size]
         )}
-        onClick={(e) => e.stopPropagation()}
       >
         {title && (
           <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between sticky top-0 bg-white dark:bg-slate-800 rounded-t-2xl sm:rounded-t-xl z-10">

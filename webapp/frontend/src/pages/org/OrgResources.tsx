@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -7,6 +8,20 @@ import { orgApi } from "@/api";
 import { apiError } from "@/api/client";
 import { PageHeader, Spinner } from "@/components/ui";
 import type { OrgResource, ResourceKind } from "@/types";
+
+// Close a modal only when both mousedown and mouseup land on the backdrop
+// itself. This avoids closing when a drag (e.g. text selection inside an
+// input) starts inside the modal and ends outside it.
+function useBackdropClose(onClose: () => void) {
+  const down = useRef(false);
+  return {
+    onMouseDown: (e: ReactMouseEvent) => { down.current = e.target === e.currentTarget; },
+    onMouseUp: (e: ReactMouseEvent) => {
+      if (down.current && e.target === e.currentTarget) onClose();
+      down.current = false;
+    },
+  };
+}
 
 const DEFAULT_KINDS: KindDef[] = [
   { value: "property", label: "Property", attrs: [
@@ -322,8 +337,8 @@ function ResourceModal({ resource, all, kinds, onClose, onSave, saving }: {
   const linkable = all.filter((r) => r.id !== resource.id && r.kind !== kind);
 
   return (
-    <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4" {...useBackdropClose(onClose)}>
+      <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-4 py-3">
           <h3 className="font-semibold">{resource.id ? "Edit" : "New"} {meta.label.toLowerCase()}</h3>
           <button className="btn-ghost" onClick={onClose}><X size={16} /></button>
@@ -600,8 +615,8 @@ function BulkImportModal({ orgSlug, activeKind, existing, kinds, onClose, onDone
   }, { create: 0, update: 0, delete: 0, errors: 0 });
 
   return (
-    <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4" {...useBackdropClose(onClose)}>
+      <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-4 py-3">
           <h3 className="font-semibold">Import resources from CSV</h3>
           <button className="btn-ghost" onClick={onClose}><X size={16} /></button>
@@ -908,8 +923,8 @@ function ManageKindsModal({ orgSlug, current, existingResources, branding, onClo
   });
 
   return (
-    <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4" {...useBackdropClose(onClose)}>
+      <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-4 py-3">
           <div>
             <h3 className="font-semibold">Manage resource categories</h3>
