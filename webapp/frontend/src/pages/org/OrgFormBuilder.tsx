@@ -551,6 +551,12 @@ function GroupsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSch
               onChange={(patch) => setGroup(i, patch)}
             />
 
+            <VisibleWhenConfig
+              group={g}
+              resourceFields={resourceFields}
+              onChange={(patch) => setGroup(i, patch)}
+            />
+
             <div className="space-y-3">
               {g.items.map((it, j) => (
                 <div key={j} className="space-y-2 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 p-2">
@@ -706,6 +712,138 @@ function DynamicGroupConfig({ group, resourceFields, onChange }: {
     </div>
   );
 }
+
+/**
+ * Per-group "Show only when …" rule editor. Drives `group.visible_when`,
+ * which the form renderer (and backend summary builder) consult to skip
+ * groups or — for dynamic groups — individual per-resource instances when
+ * a selected resource's attribute does/does not satisfy the condition.
+ *
+ * Typical use: "only show this Network Drives block for Properties whose
+ * `is_corporate` attribute is true", or its inverse via the Negate toggle.
+ */
+function VisibleWhenConfig({ group, resourceFields, onChange }: {
+  group: FormGroup;
+  resourceFields: FormField[];
+  onChange: (patch: Partial<FormGroup>) => void;
+}) {
+  const vw = group.visible_when;
+  const enabled = !!vw;
+  // Dynamic groups always check the per-instance resource so the source
+  // field is implicit. Static groups must pick which resource field to read.
+  const isDynamic = !!group.dynamic;
+  const mode: "truthy" | "equals" = vw?.equals !== undefined ? "equals" : "truthy";
+  const equalsCsv = Array.isArray(vw?.equals)
+    ? (vw?.equals as string[]).join(", ")
+    : (vw?.equals as string | undefined) || "";
+
+  const update = (patch: Partial<NonNullable<FormGroup["visible_when"]>>) => {
+    onChange({ visible_when: { ...(vw as any), ...patch } });
+  };
+
+  return (
+    <div className="rounded-md bg-amber-50/60 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900 p-3 space-y-2">
+      <label className="flex items-center gap-2 text-sm font-medium text-amber-900 dark:text-amber-200">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => {
+            if (e.target.checked) {
+              onChange({
+                visible_when: {
+                  source_field_id: isDynamic ? undefined : (resourceFields[0]?.id || ""),
+                  attribute: "",
+                  truthy: true,
+                },
+              });
+            } else {
+              onChange({ visible_when: undefined });
+            }
+          }}
+        />
+        Only show this group when a resource attribute matches
+      </label>
+      <p className="text-xs text-amber-900/80 dark:text-amber-200/80">
+        {isDynamic
+          ? "Each per-resource instance of this dynamic group is shown only when that resource's attribute matches the rule below. Combine with Negate to hide matching resources instead (e.g. hide Corporate Office properties)."
+          : "This group renders only when the resource selected in the chosen field has an attribute that matches the rule below."}
+      </p>
+      {enabled && vw && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2 pt-1">
+          {!isDynamic && (
+            <div>
+              <label className="label text-xs">Source field</label>
+              <select
+                className="input"
+                value={vw.source_field_id || ""}
+                onChange={(e) => update({ source_field_id: e.target.value })}
+              >
+                <option value="">— pick a resource field —</option>
+                {resourceFields.map((rf) => (
+                  <option key={rf.id} value={rf.id}>{rf.label || rf.id}{rf.resource_kind ? ` (${rf.resource_kind})` : ""}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="label text-xs">Attribute key</label>
+            <input
+              className="input font-mono"
+              value={vw.attribute}
+              onChange={(e) => update({ attribute: e.target.value })}
+              placeholder="is_corporate"
+            />
+            <p className="help">Must match an attribute key configured on the resource.</p>
+          </div>
+          <div>
+            <label className="label text-xs">Match mode</label>
+            <select
+              className="input"
+              value={mode}
+              onChange={(e) => {
+                if (e.target.value === "truthy") {
+                  update({ equals: undefined, truthy: true });
+                } else {
+                  update({ truthy: undefined, equals: "" });
+                }
+              }}
+            >
+              <option value="truthy">Truthy (yes / true / 1 / x / non-empty)</option>
+              <option value="equals">Equals one of …</option>
+            </select>
+          </div>
+          {mode === "equals" && (
+            <div>
+              <label className="label text-xs">Value(s)</label>
+              <input
+                className="input"
+                value={equalsCsv}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const parts = raw.split(",").map((s) => s.trim()).filter(Boolean);
+                  update({ equals: parts.length <= 1 ? raw : parts });
+                }}
+                placeholder="corporate, hq"
+              />
+              <p className="help">Comma-separate to match any of several values. Case-insensitive.</p>
+            </div>
+          )}
+          <div className="md:col-span-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={!!vw.negate}
+                onChange={(e) => update({ negate: e.target.checked })}
+              />
+              Negate — hide when the rule matches (instead of showing)
+            </label>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Textarea bound to an array of lines. Stores raw text locally while the
  * user is typing so newlines aren't lost (the previous version trimmed and

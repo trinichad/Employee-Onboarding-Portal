@@ -109,6 +109,49 @@ def _summary_lines(
     resources = resources or {}
     lines: List[str] = []
 
+    def _is_truthy_attr(v) -> bool:
+        if v is True:
+            return True
+        if v is False or v is None:
+            return False
+        s = str(v).strip().lower()
+        if not s:
+            return False
+        if s in {"no", "false", "0", "n", "off", "-"}:
+            return False
+        return True
+
+    def _eval_visible(cond: dict, resource: Optional[OrgResource]) -> bool:
+        """Mirror FormRenderer.evalGroupVisible. Returns True iff the group
+        (or per-instance dynamic block) should be included in the summary."""
+        if not cond:
+            return True
+        if resource is None:
+            return bool(cond.get("negate"))
+        raw = (getattr(resource, "attributes", None) or {}).get(cond.get("attribute"))
+        passed = True
+        truthy = cond.get("truthy")
+        equals = cond.get("equals")
+        if truthy is True:
+            passed = passed and _is_truthy_attr(raw)
+        if equals is not None:
+            norm = lambda v: str(v if v is not None else "").strip().lower()
+            want = [norm(x) for x in equals] if isinstance(equals, list) else [norm(equals)]
+            passed = passed and (norm(raw) in want)
+        if truthy is None and equals is None:
+            passed = _is_truthy_attr(raw)
+        return (not passed) if cond.get("negate") else passed
+
+    def _resource_for_field(fid: Optional[str]) -> Optional[OrgResource]:
+        if not fid:
+            return None
+        val = payload.get(fid)
+        try:
+            rid = int(val)
+        except (TypeError, ValueError):
+            return None
+        return resources.get(rid)
+
     rt = payload.get("request_type")
     if _is_filled(rt):
         lines.append(f"Request Type: {rt}")
@@ -137,6 +180,7 @@ def _summary_lines(
         if not raw:
             continue
 
+        visible_when = g.get("visible_when") or None
         dyn = g.get("dynamic")
         if dyn:
             placeholder = dyn.get("placeholder") or "{Property}"
@@ -145,6 +189,9 @@ def _summary_lines(
             default_name = _resolve_resource_name(source_val, resources)
             if default_name is None and isinstance(source_val, str) and source_val.strip():
                 default_name = source_val
+            # Resolve the actual OrgResource (when present) for per-instance
+            # visibility checks against the source field's selection.
+            default_resource = _resource_for_field(source_field_id)
             # Normalize raw to {default, extras}.
             if isinstance(raw, dict) and ("default" in raw or "extras" in raw):
                 default_sel = raw.get("default") or {}
@@ -164,13 +211,16 @@ def _summary_lines(
                 return _substitute(g.get("title") or gid, placeholder, name)
 
             default_items = _items_for(default_sel, default_name)
-            if default_items:
+            if default_items and _eval_visible(visible_when, default_resource):
                 lines.append(f"{_title_for(default_name)}: {', '.join(default_items)}")
             for ex in extras:
                 if not isinstance(ex, dict):
                     continue
                 rid = ex.get("resource_id")
                 ex_name = _resolve_resource_name(rid, resources)
+                ex_resource = resources.get(rid) if isinstance(rid, int) else None
+                if not _eval_visible(visible_when, ex_resource):
+                    continue
                 items = _items_for(ex.get("items") or {}, ex_name)
                 if items:
                     title = _title_for(ex_name) if ex_name else f"{_title_for(None)} (resource #{rid})"
@@ -178,6 +228,10 @@ def _summary_lines(
             continue
 
         # Plain (non-dynamic) group.
+        if visible_when and not _eval_visible(
+            visible_when, _resource_for_field(visible_when.get("source_field_id"))
+        ):
+            continue
         sel = raw if isinstance(raw, dict) else {}
         labels = [it.get("label") for it in (g.get("items") or []) if sel.get(it.get("id"))]
         if labels:

@@ -87,6 +87,33 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
     if (["no", "false", "0", "n", "off", "-"].includes(s)) return false;
     return true; // "yes", "true", "1", "x", or any other non-empty value
   };
+
+  // Evaluate a group's `visible_when` rule against a resource. Returns true
+  // when the group/instance should render. A null/undefined resource fails
+  // any rule that requires one (the group is hidden).
+  const evalGroupVisible = (g: FormGroup, resource?: OrgResource): boolean => {
+    const cond = g.visible_when;
+    if (!cond) return true;
+    if (!resource) {
+      // No resource selected yet: hide rather than flash content in/out.
+      return !!cond.negate;
+    }
+    const raw = resource.attributes?.[cond.attribute];
+    let pass = true;
+    if (cond.truthy === true) {
+      pass = pass && isTruthyAttr(raw);
+    }
+    if (cond.equals !== undefined) {
+      const norm = (v: any) => String(v ?? "").trim().toLowerCase();
+      const want = Array.isArray(cond.equals) ? cond.equals.map(norm) : [norm(cond.equals)];
+      pass = pass && want.includes(norm(raw));
+    }
+    // If neither truthy nor equals was set, presence/non-empty is the test.
+    if (cond.truthy === undefined && cond.equals === undefined) {
+      pass = isTruthyAttr(raw);
+    }
+    return cond.negate ? !pass : pass;
+  };
   useEffect(() => {
     if (!schema.groups || schema.groups.length === 0) return;
     // First pass: seed last-seen source values so we don't overwrite the
@@ -196,7 +223,18 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
         </div>
       )}
 
-      {schema.groups?.filter((g) => g.enabled).map((g) => (
+      {schema.groups?.filter((g) => {
+        if (!g.enabled) return false;
+        if (!g.visible_when) return true;
+        // Dynamic groups defer the check to per-instance rendering inside
+        // DynamicGroupCard so we still render the card (which may show only
+        // matching instances). For static groups we need a concrete resource
+        // resolved from the named source field.
+        if (g.dynamic) return true;
+        const sid = g.visible_when.source_field_id;
+        const resource = sid ? allResources.find((r) => r.id === Number(values[sid])) : undefined;
+        return evalGroupVisible(g, resource);
+      }).map((g) => (
         g.dynamic ? (
           <DynamicGroupCard
             key={g.id}
@@ -212,6 +250,7 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
             sourceFieldLabel={fields.find((x) => x.id === g.dynamic!.source_field_id)?.label || g.dynamic.source_field_id}
             allResources={allResources}
             fallbackKind={fields.find((x) => x.id === g.dynamic!.source_field_id)?.resource_kind}
+            instanceVisible={(r) => evalGroupVisible(g, r)}
           />
         ) : (
         <div key={g.id} className="card">
@@ -483,7 +522,7 @@ export function normalizeDynamicGroupValue(raw: any): DynamicGroupValue {
   return { default: raw as Record<string, boolean>, extras: [] };
 }
 
-function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, sourceFieldLabel, allResources, fallbackKind }: {
+function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, sourceFieldLabel, allResources, fallbackKind, instanceVisible }: {
   group: FormGroup;
   value: DynamicGroupValue;
   onChange: (v: DynamicGroupValue) => void;
@@ -492,6 +531,7 @@ function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, so
   sourceFieldLabel: string;
   allResources: OrgResource[];
   fallbackKind?: string;
+  instanceVisible?: (resource?: OrgResource) => boolean;
 }) {
   const dyn = group.dynamic!;
   const placeholder = dyn.placeholder || "{Property}";
@@ -570,10 +610,32 @@ function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, so
     );
   };
 
+  // Per-instance visibility (e.g. skip Corporate Office in a per-property
+  // network-access group). The instance is hidden but its stored selections
+  // are kept on the request so the user can recover by clearing the
+  // visibility condition or selecting a different property.
+  const passes = (r?: OrgResource) => (instanceVisible ? instanceVisible(r) : true);
+
+  // Also exclude resources that would be hidden from the "add another" picker
+  // so the user doesn't add an instance that would immediately disappear.
+  const visiblePickerOptions = instanceVisible
+    ? pickerOptions.filter((r) => passes(r))
+    : pickerOptions;
+
+  const defaultVisible = passes(sourceResource);
+  const visibleExtras = value.extras.map((ex, idx) => ({ ex, idx, r: allResources.find((x) => x.id === ex.resource_id) }))
+    .filter(({ r }) => passes(r));
+
+  // If nothing would render and the user can't add anything, drop the whole
+  // card so it doesn't leave an empty section.
+  if (!defaultVisible && visibleExtras.length === 0 && (!dyn.allow_additional || disabled || visiblePickerOptions.length === 0)) {
+    return null;
+  }
+
   return (
     <div className="card">
       <div className="card-body space-y-3">
-        {renderContext(
+        {defaultVisible && renderContext(
           "default",
           sourceResource?.name,
           value.default,
@@ -582,22 +644,19 @@ function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, so
           sourceFieldLabel ? `from "${sourceFieldLabel}"` : undefined,
         )}
 
-        {value.extras.map((ex, idx) => {
-          const r = allResources.find((x) => x.id === ex.resource_id);
-          return renderContext(
-            `extra-${idx}-${ex.resource_id}`,
-            r?.name || `#${ex.resource_id}`,
-            ex.items,
-            (itemId, checked) => setExtra(idx, itemId, checked),
-            () => removeExtra(idx),
-            "added",
-          );
-        })}
+        {visibleExtras.map(({ ex, idx, r }) => renderContext(
+          `extra-${idx}-${ex.resource_id}`,
+          r?.name || `#${ex.resource_id}`,
+          ex.items,
+          (itemId, checked) => setExtra(idx, itemId, checked),
+          () => removeExtra(idx),
+          "added",
+        ))}
 
         {dyn.allow_additional && !disabled && (
           <DynamicGroupAddPicker
             buttonLabel={buttonLabel}
-            options={pickerOptions}
+            options={visiblePickerOptions}
             kindLabel={kindLabel}
             onPick={addExtra}
           />

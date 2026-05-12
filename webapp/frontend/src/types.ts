@@ -96,6 +96,28 @@ export interface FormGroup {
     additional_button_label?: string;
     resource_kind?: string;
   };
+  /** Conditionally show this group based on an attribute of a selected
+   *  resource.
+   *
+   *  - For non-dynamic groups, `source_field_id` names the resource field to
+   *    inspect. The group renders only if the named resource's
+   *    `attributes[attribute]` satisfies the condition.
+   *  - For dynamic groups, the condition is evaluated per rendered instance
+   *    using THAT instance's resource (source_field_id is ignored). An
+   *    instance whose resource does not satisfy the condition is skipped.
+   *
+   *  Condition semantics (combine as needed):
+   *    truthy: true   → attribute must be truthy ("yes"/"true"/"1"/"x"/non-empty)
+   *    equals: "..."  → attribute must equal the given value (or one of them)
+   *  Set `negate: true` to invert the check (i.e. "hide when ...").
+   *  When unset, the group is always visible. */
+  visible_when?: {
+    source_field_id?: string;
+    attribute: string;
+    equals?: string | string[];
+    truthy?: boolean;
+    negate?: boolean;
+  };
 }
 export interface FormSchemaResp {
   id: number;
