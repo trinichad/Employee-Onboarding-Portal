@@ -565,10 +565,10 @@ function GroupsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSch
                     </div>
                   </div>
                   {!g.dynamic && resourceFields.length > 0 && (
-                    <div className="pl-3 pt-1 border-t border-dashed border-slate-200 dark:border-slate-700 flex flex-nowrap items-center gap-2 text-xs text-slate-500 overflow-x-auto">
-                      <span className="shrink-0 whitespace-nowrap">Auto-check based on:</span>
+                    <div className="grid grid-cols-12 gap-2 items-center pt-1 border-t border-dashed border-slate-200 dark:border-slate-700 text-xs text-slate-500">
+                      <span className="col-span-3 whitespace-nowrap">Auto-check based on:</span>
                       <select
-                        className="input text-xs py-1 !w-56 shrink-0"
+                        className="input text-xs py-1 col-span-4"
                         value={it.auto_check_from?.source_field_id || ""}
                         onChange={(e) => {
                           const sid = e.target.value;
@@ -587,11 +587,11 @@ function GroupsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSch
                           <option key={rf.id} value={rf.id}>{rf.label || rf.id}</option>
                         ))}
                       </select>
-                      {it.auto_check_from?.source_field_id && (
+                      {it.auto_check_from?.source_field_id ? (
                         <>
-                          <span className="shrink-0 whitespace-nowrap">resource attribute</span>
+                          <span className="col-span-2 text-right whitespace-nowrap">attribute</span>
                           <input
-                            className="input text-xs py-1 !w-44 font-mono shrink-0"
+                            className="input text-xs py-1 font-mono col-span-3"
                             placeholder="e.g. adobe_acrobat"
                             value={it.auto_check_from.attribute || ""}
                             onChange={(e) => setGroup(i, {
@@ -602,6 +602,8 @@ function GroupsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSch
                             })}
                           />
                         </>
+                      ) : (
+                        <span className="col-span-5" />
                       )}
                     </div>
                   )}
