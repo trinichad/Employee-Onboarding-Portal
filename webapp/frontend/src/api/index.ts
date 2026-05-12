@@ -163,7 +163,7 @@ export const orgApi = {
 
   listRequests: (slug: string, params?: { status?: RequestStatus; q?: string; mine_only?: boolean }) =>
     api.get<EmployeeRequest[]>(`/orgs/${slug}/requests`, { params }).then(r => r.data),
-  createRequest: (slug: string, data: { request_type: string; subject?: string; payload: Record<string, any> }) =>
+  createRequest: (slug: string, data: { request_type: string; subject?: string; payload: Record<string, any>; notes?: string; support_message?: string }) =>
     api.post<EmployeeRequest>(`/orgs/${slug}/requests`, data).then(r => r.data),
   getRequest: (slug: string, id: number) =>
     api.get<EmployeeRequest>(`/orgs/${slug}/requests/${id}`).then(r => r.data),

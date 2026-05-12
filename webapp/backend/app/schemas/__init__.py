@@ -228,6 +228,8 @@ class EmployeeRequestCreate(BaseModel):
     request_type: str = Field(min_length=1, max_length=120)
     subject: str = Field(default="", max_length=255)
     payload: Dict[str, Any]
+    notes: Optional[str] = None
+    support_message: Optional[str] = None
 
 
 class EmployeeRequestUpdate(BaseModel):

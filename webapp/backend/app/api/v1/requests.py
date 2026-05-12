@@ -240,6 +240,8 @@ def create_request(
         request_type=body.request_type,
         subject=body.subject or body.request_type,
         payload=body.payload,
+        notes=body.notes,
+        support_message=body.support_message,
         status=RequestStatus.PENDING_APPROVAL,
     )
     db.add(row)
