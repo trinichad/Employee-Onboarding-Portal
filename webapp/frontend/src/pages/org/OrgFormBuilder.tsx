@@ -846,10 +846,10 @@ function VisibleWhenConfig({ group, resourceFields, onChange }: {
                   checked={!!vw.keep_picker}
                   onChange={(e) => update({ keep_picker: e.target.checked })}
                 />
-                Even when hidden, still allow adding other resources via the picker
+                Picker-only — hide the default block, just show "+ Add another …"
               </label>
               <p className="help">
-                Useful when the primary resource shouldn't see this group's items at all, but should still be able to add access for other resources that <em>do</em> qualify. Example: a Corporate Office user shouldn't see "Corporate Office Maintenance Email" (it doesn't exist), but should still be able to grant themselves access to specific property mailboxes.
+                Makes this group purely a picker (no items for the primary resource). Useful when the primary resource has its own dedicated group elsewhere, but should also be able to add access for other resources. Example: a Corporate Office user adding access to specific property shared mailboxes — without duplicating the regular per-property mailbox group for non-corporate users.
               </p>
             </div>
           )}

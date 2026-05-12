@@ -211,7 +211,13 @@ def _summary_lines(
                 return _substitute(g.get("title") or gid, placeholder, name)
 
             default_items = _items_for(default_sel, default_name)
-            if default_items and _eval_visible(visible_when, default_resource):
+            # When `visible_when.keep_picker` is set the dynamic group is
+            # picker-only: the default block is suppressed regardless of
+            # whether the primary resource passes the rule (it would just
+            # duplicate another group). User-added extras are still
+            # emitted for any resources that pass the rule.
+            keep_picker = bool((visible_when or {}).get("keep_picker"))
+            if default_items and not keep_picker and _eval_visible(visible_when, default_resource):
                 lines.append(f"{_title_for(default_name)}: {', '.join(default_items)}")
             for ex in extras:
                 if not isinstance(ex, dict):

@@ -626,24 +626,24 @@ function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, so
   const visibleExtras = value.extras.map((ex, idx) => ({ ex, idx, r: allResources.find((x) => x.id === ex.resource_id) }))
     .filter(({ r }) => passes(r));
 
-  // When the primary resource fails the visibility rule we normally hide
-  // the whole card. The `keep_picker` flag overrides that: it suppresses
-  // the default block but keeps the "+ Add another …" picker so users can
-  // still add eligible resources (e.g. a Corporate Office user adding
-  // access to specific property shared mailboxes).
+  // `keep_picker` turns this group into a "picker-only" group: the default
+  // block (driven by the primary source resource) is always suppressed, so
+  // it doesn't duplicate another group that already covers the primary
+  // resource. The user adds eligible resources through the picker only.
   const keepPicker = !!group.visible_when?.keep_picker;
+  const showDefault = defaultVisible && !keepPicker;
   const showPicker = !!dyn.allow_additional && !disabled
-    && (defaultVisible || visibleExtras.length > 0 || keepPicker)
+    && (showDefault || visibleExtras.length > 0 || keepPicker)
     && visiblePickerOptions.length > 0;
 
-  if (!defaultVisible && visibleExtras.length === 0 && !showPicker) {
+  if (!showDefault && visibleExtras.length === 0 && !showPicker) {
     return null;
   }
 
   return (
     <div className="card">
       <div className="card-body space-y-3">
-        {defaultVisible && renderContext(
+        {showDefault && renderContext(
           "default",
           sourceResource?.name,
           value.default,
@@ -655,7 +655,7 @@ function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, so
         {/* When the default block is hidden but the picker stays visible
             (keep_picker), surface a heading so users understand what the
             "+ Add another …" button below is for. */}
-        {!defaultVisible && (
+        {!showDefault && (
           <div className="flex items-baseline gap-2 min-w-0">
             <h4 className="font-medium text-slate-800 dark:text-slate-100 truncate">
               {substitutePlaceholder(group.title, dyn.placeholder || "{Property}", undefined)}
