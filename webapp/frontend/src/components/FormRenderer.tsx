@@ -192,8 +192,13 @@ function FieldRow({ field, values, disabled, orgSlug, allResources, set }: {
       const parentId = Number(values[f.filter_by.source_field_id]);
       const parent = allResources.find((r) => r.id === parentId);
       if (parent) {
-        const allowed = new Set(parent.linked_resource_ids || []);
-        pool = pool.filter((r) => allowed.has(r.id));
+        // Links are stored on whichever resource the admin edited; check both
+        // directions so a Job Title that links to a Department works the same
+        // as a Department that lists its Job Titles.
+        const parentLinks = new Set(parent.linked_resource_ids || []);
+        pool = pool.filter((r) =>
+          parentLinks.has(r.id) || (r.linked_resource_ids || []).includes(parent.id)
+        );
       } else {
         pool = [];
       }
