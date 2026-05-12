@@ -838,6 +838,21 @@ function VisibleWhenConfig({ group, resourceFields, onChange }: {
               Negate — hide when the rule matches (instead of showing)
             </label>
           </div>
+          {isDynamic && (
+            <div className="md:col-span-4">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={!!vw.keep_picker}
+                  onChange={(e) => update({ keep_picker: e.target.checked })}
+                />
+                Even when hidden, still allow adding other resources via the picker
+              </label>
+              <p className="help">
+                Useful when the primary resource shouldn't see this group's items at all, but should still be able to add access for other resources that <em>do</em> qualify. Example: a Corporate Office user shouldn't see "Corporate Office Maintenance Email" (it doesn't exist), but should still be able to grant themselves access to specific property mailboxes.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>

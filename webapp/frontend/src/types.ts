@@ -117,6 +117,12 @@ export interface FormGroup {
     equals?: string | string[];
     truthy?: boolean;
     negate?: boolean;
+    /** Dynamic groups only: when the primary (default) resource fails the
+     *  rule, normally the whole card is hidden. Setting this keeps the
+     *  "+ Add another …" picker visible (filtered to resources that pass
+     *  the rule) so users can still add eligible instances even when the
+     *  primary selection is excluded. */
+    keep_picker?: boolean;
   };
 }
 export interface FormSchemaResp {

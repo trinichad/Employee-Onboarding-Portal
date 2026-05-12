@@ -626,12 +626,17 @@ function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, so
   const visibleExtras = value.extras.map((ex, idx) => ({ ex, idx, r: allResources.find((x) => x.id === ex.resource_id) }))
     .filter(({ r }) => passes(r));
 
-  // If nothing would render, drop the whole card. We treat the default
-  // block's visibility as the gate for the "+ add another" picker too —
-  // when the primary selected resource fails the rule, the group is
-  // considered inapplicable and adding more instances would just resurrect
-  // it under the same (now-irrelevant) heading.
-  if (!defaultVisible && visibleExtras.length === 0) {
+  // When the primary resource fails the visibility rule we normally hide
+  // the whole card. The `keep_picker` flag overrides that: it suppresses
+  // the default block but keeps the "+ Add another …" picker so users can
+  // still add eligible resources (e.g. a Corporate Office user adding
+  // access to specific property shared mailboxes).
+  const keepPicker = !!group.visible_when?.keep_picker;
+  const showPicker = !!dyn.allow_additional && !disabled
+    && (defaultVisible || visibleExtras.length > 0 || keepPicker)
+    && visiblePickerOptions.length > 0;
+
+  if (!defaultVisible && visibleExtras.length === 0 && !showPicker) {
     return null;
   }
 
@@ -647,6 +652,20 @@ function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, so
           sourceFieldLabel ? `from "${sourceFieldLabel}"` : undefined,
         )}
 
+        {/* When the default block is hidden but the picker stays visible
+            (keep_picker), surface a heading so users understand what the
+            "+ Add another …" button below is for. */}
+        {!defaultVisible && (
+          <div className="flex items-baseline gap-2 min-w-0">
+            <h4 className="font-medium text-slate-800 dark:text-slate-100 truncate">
+              {substitutePlaceholder(group.title, dyn.placeholder || "{Property}", undefined)}
+            </h4>
+            <span className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              {sourceFieldLabel ? `from "${sourceFieldLabel}"` : ""}
+            </span>
+          </div>
+        )}
+
         {visibleExtras.map(({ ex, idx, r }) => renderContext(
           `extra-${idx}-${ex.resource_id}`,
           r?.name || `#${ex.resource_id}`,
@@ -656,7 +675,7 @@ function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, so
           "added",
         ))}
 
-        {dyn.allow_additional && !disabled && (
+        {showPicker && (
           <DynamicGroupAddPicker
             buttonLabel={buttonLabel}
             options={visiblePickerOptions}
