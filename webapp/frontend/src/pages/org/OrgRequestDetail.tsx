@@ -83,15 +83,33 @@ export default function OrgRequestDetail() {
     onError: (e) => toast.error(apiError(e)),
   });
 
+  const exportPdf = async () => {
+    const url = orgApi.exportRequestUrl(orgSlug, rid);
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${getAccessToken()}` } });
+    if (!res.ok) { toast.error("Export failed"); return; }
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `request-${rid}.pdf`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const promptDownloadPdf = () => {
+    if (window.confirm("Request sent to support. Download a PDF copy for your records?")) {
+      exportPdf();
+    }
+  };
+
   const submit = useMutation({
     mutationFn: () => orgApi.submitRequest(orgSlug, rid),
-    onSuccess: () => { toast.success("Sent to support"); invalidate(); },
+    onSuccess: () => { toast.success("Sent to support"); invalidate(); promptDownloadPdf(); },
     onError: (e) => toast.error(apiError(e)),
   });
 
   const resubmit = useMutation({
     mutationFn: () => orgApi.resubmitRequest(orgSlug, rid),
-    onSuccess: () => { toast.success("Updated version sent to support"); invalidate(); },
+    onSuccess: () => { toast.success("Updated version sent to support"); invalidate(); promptDownloadPdf(); },
     onError: (e) => toast.error(apiError(e)),
   });
 
@@ -104,18 +122,6 @@ export default function OrgRequestDetail() {
     },
     onError: (e) => toast.error(apiError(e)),
   });
-
-  const exportPdf = async () => {
-    const url = orgApi.exportRequestUrl(orgSlug, rid);
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${getAccessToken()}` } });
-    if (!res.ok) { toast.error("Export failed"); return; }
-    const blob = await res.blob();
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `request-${rid}.pdf`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
 
   if (req.isLoading || form.isLoading) return <Spinner />;
   if (!req.data) return <div>Not found.</div>;
