@@ -626,9 +626,12 @@ function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, so
   const visibleExtras = value.extras.map((ex, idx) => ({ ex, idx, r: allResources.find((x) => x.id === ex.resource_id) }))
     .filter(({ r }) => passes(r));
 
-  // If nothing would render and the user can't add anything, drop the whole
-  // card so it doesn't leave an empty section.
-  if (!defaultVisible && visibleExtras.length === 0 && (!dyn.allow_additional || disabled || visiblePickerOptions.length === 0)) {
+  // If nothing would render, drop the whole card. We treat the default
+  // block's visibility as the gate for the "+ add another" picker too —
+  // when the primary selected resource fails the rule, the group is
+  // considered inapplicable and adding more instances would just resurrect
+  // it under the same (now-irrelevant) heading.
+  if (!defaultVisible && visibleExtras.length === 0) {
     return null;
   }
 
