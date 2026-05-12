@@ -6,6 +6,7 @@ import { orgApi } from "@/api";
 import { apiError } from "@/api/client";
 import { PageHeader, Spinner } from "@/components/ui";
 import { FormRenderer } from "@/components/FormRenderer";
+import type { FormField } from "@/types";
 
 export default function OrgRequestNew() {
   const { orgSlug = "" } = useParams();
@@ -14,6 +15,25 @@ export default function OrgRequestNew() {
   const [values, setValues] = useState<Record<string, any>>({});
   const [supportMessage, setSupportMessage] = useState("");
   const [notes, setNotes] = useState("");
+
+  const validate = (): string | null => {
+    const schema = form.data?.schema;
+    if (!schema) return "Form is still loading.";
+    const rt: string | undefined = values.request_type;
+    const isVisible = (f: FormField) => {
+      const allow = f.visible_when_request_type_in;
+      if (allow === undefined) return true;
+      return !!rt && allow.includes(rt);
+    };
+    const isEmpty = (v: any) =>
+      v === undefined || v === null || (typeof v === "string" && v.trim() === "") || (Array.isArray(v) && v.length === 0);
+    for (const f of schema.fields || []) {
+      if (!f.required) continue;
+      if (!isVisible(f)) continue;
+      if (isEmpty(values[f.id])) return `"${f.label}" is required.`;
+    }
+    return null;
+  };
 
   const create = useMutation({
     mutationFn: () => orgApi.createRequest(orgSlug, {
@@ -26,6 +46,12 @@ export default function OrgRequestNew() {
     onSuccess: (r) => { toast.success("Request created — awaiting approval"); nav(`/${orgSlug}/requests/${r.id}`); },
     onError: (e) => toast.error(apiError(e)),
   });
+
+  const onSubmit = () => {
+    const err = validate();
+    if (err) { toast.error(err); return; }
+    create.mutate();
+  };
 
   return (
     <>
@@ -64,7 +90,7 @@ export default function OrgRequestNew() {
 
           <div className="flex justify-end gap-2">
             <button className="btn-secondary" onClick={() => nav(-1)}>Cancel</button>
-            <button className="btn-primary" disabled={create.isPending} onClick={() => create.mutate()}>
+            <button className="btn-primary" disabled={create.isPending} onClick={onSubmit}>
               {create.isPending ? "Submitting…" : "Submit request"}
             </button>
           </div>

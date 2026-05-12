@@ -105,14 +105,14 @@ export default function OrgRequestDetail() {
     onError: (e) => toast.error(apiError(e)),
   });
 
-  const exportTxt = async () => {
+  const exportPdf = async () => {
     const url = orgApi.exportRequestUrl(orgSlug, rid);
     const res = await fetch(url, { headers: { Authorization: `Bearer ${getAccessToken()}` } });
     if (!res.ok) { toast.error("Export failed"); return; }
     const blob = await res.blob();
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `request-${rid}.txt`;
+    a.download = `request-${rid}.pdf`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -136,7 +136,7 @@ export default function OrgRequestDetail() {
         title={`Request #${req.data.id}`}
         description={req.data.subject || req.data.request_type}
         actions={<>
-          <button className="btn-secondary" onClick={exportTxt}><Download size={14} /> Export</button>
+          <button className="btn-secondary" onClick={exportPdf}><Download size={14} /> Export PDF</button>
           {canApprove && <button className="btn-primary" disabled={approve.isPending} onClick={() => approve.mutate()}><Check size={14} /> Approve</button>}
           {canReject && <button className="btn-secondary" disabled={reject.isPending} onClick={() => { if (confirm("Reject this request?")) reject.mutate(); }}><X size={14} /> Reject</button>}
           {canSubmit && (

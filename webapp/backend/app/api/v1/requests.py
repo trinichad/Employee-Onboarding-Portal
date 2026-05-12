@@ -234,6 +234,28 @@ def create_request(
     db: Session = Depends(get_db),
 ) -> EmployeeRequestOut:
     org, current = bound
+
+    # Server-side required-field validation against the org's active schema.
+    active = (
+        db.query(FormSchema)
+        .filter(FormSchema.organization_id == org.id, FormSchema.is_active.is_(True))
+        .order_by(FormSchema.version.desc())
+        .first()
+    )
+    if active and isinstance(active.schema, dict):
+        rt = body.request_type
+        payload = body.payload or {}
+        for f in (active.schema.get("fields") or []):
+            if not isinstance(f, dict) or not f.get("required"):
+                continue
+            allow = f.get("visible_when_request_type_in")
+            if isinstance(allow, list) and allow and rt not in allow:
+                continue
+            v = payload.get(f.get("id"))
+            empty = v is None or (isinstance(v, str) and not v.strip()) or (isinstance(v, list) and len(v) == 0)
+            if empty:
+                raise HTTPException(status_code=422, detail=f'"{f.get("label") or f.get("id")}" is required.')
+
     row = EmployeeRequest(
         organization_id=org.id,
         submitter_id=current.user.id,
@@ -517,33 +539,160 @@ def delete_request(
 
 
 @router.get("/{request_id}/export")
-def export_request_text(request_id: int, bound=Depends(require_org_member), db: Session = Depends(get_db)):
+def export_request_pdf(request_id: int, bound=Depends(require_org_member), db: Session = Depends(get_db)):
     org, current = bound
     row = _load(db, org.id, request_id)
     submitter = db.get(User, row.submitter_id) if row.submitter_id else None
     schema = _active_schema(db, org.id)
     resources = _resources_by_id(db, org.id)
     summary = _summary_lines(row.payload or {}, schema, resources) or ["(no fields filled in)"]
-    lines = [
-        f"IT Request #{row.id}",
-        f"Organization: {org.name} ({org.slug})",
-        f"Type: {row.request_type}",
-        f"Employee Name: {row.subject}",
-        f"Status: {row.status.value}",
-        f"Submitted: {row.created_at.isoformat()}",
-        f"Submitter: {submitter.full_name + ' <' + submitter.email + '>' if submitter else 'Unknown'}",
-        "",
-        "--- Summary ---",
-        *summary,
+
+    # Build a branded PDF letterhead-style document.
+    from reportlab.lib.pagesizes import LETTER
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_RIGHT
+    from reportlab.platypus import (
+        BaseDocTemplate, Frame, PageTemplate, Paragraph, Spacer, Table, TableStyle, Image, KeepTogether,
+    )
+    from app.services import branding as branding_svc
+
+    buf = io.BytesIO()
+    page_w, page_h = LETTER
+    margin = 0.75 * inch
+    header_h = 1.0 * inch
+
+    # Resolve logo (org first, fall back to platform).
+    logo_path: Optional[str] = None
+    if org.logo_ext:
+        found = branding_svc.find_logo(f"org-{org.id}", org.logo_ext)
+        if found:
+            logo_path = str(found[0])
+    if not logo_path:
+        from app.models import PlatformSetting
+        ps = db.query(PlatformSetting).first()
+        if ps and ps.logo_ext:
+            found = branding_svc.find_logo("platform", ps.logo_ext)
+            if found:
+                logo_path = str(found[0])
+
+    styles = getSampleStyleSheet()
+    h1 = ParagraphStyle("H1", parent=styles["Heading1"], fontSize=18, leading=22, spaceAfter=2, textColor=colors.HexColor("#0f172a"))
+    h2 = ParagraphStyle("H2", parent=styles["Heading2"], fontSize=12, leading=15, spaceBefore=10, spaceAfter=4, textColor=colors.HexColor("#0f172a"))
+    body = ParagraphStyle("Body", parent=styles["BodyText"], fontSize=10, leading=14, textColor=colors.HexColor("#1f2937"))
+    meta = ParagraphStyle("Meta", parent=body, fontSize=9, textColor=colors.HexColor("#475569"))
+    meta_right = ParagraphStyle("MetaRight", parent=meta, alignment=TA_RIGHT)
+
+    def _draw_header(canvas, doc):
+        canvas.saveState()
+        # Org name (top-left)
+        canvas.setFillColor(colors.HexColor("#0f172a"))
+        canvas.setFont("Helvetica-Bold", 16)
+        text_x = margin
+        if logo_path:
+            try:
+                from reportlab.lib.utils import ImageReader
+                img = ImageReader(logo_path)
+                iw, ih = img.getSize()
+                target_h = 0.55 * inch
+                target_w = iw * (target_h / ih)
+                canvas.drawImage(img, margin, page_h - margin - target_h + 6, width=target_w, height=target_h, mask="auto", preserveAspectRatio=True)
+                text_x = margin + target_w + 12
+            except Exception:
+                pass
+        canvas.drawString(text_x, page_h - margin - 8, org.name)
+        # Subtitle (small, gray)
+        canvas.setFont("Helvetica", 9)
+        canvas.setFillColor(colors.HexColor("#64748b"))
+        canvas.drawString(text_x, page_h - margin - 22, "IT / Onboarding Request")
+        # Right-aligned doc identifier
+        canvas.setFont("Helvetica-Bold", 11)
+        canvas.setFillColor(colors.HexColor("#0f172a"))
+        canvas.drawRightString(page_w - margin, page_h - margin - 8, f"Request #{row.id}")
+        canvas.setFont("Helvetica", 9)
+        canvas.setFillColor(colors.HexColor("#64748b"))
+        canvas.drawRightString(page_w - margin, page_h - margin - 22, row.created_at.strftime("%B %d, %Y"))
+        # Rule
+        canvas.setStrokeColor(colors.HexColor("#cbd5e1"))
+        canvas.setLineWidth(0.75)
+        canvas.line(margin, page_h - margin - 32, page_w - margin, page_h - margin - 32)
+        # Footer
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(colors.HexColor("#94a3b8"))
+        canvas.drawString(margin, 0.5 * inch, f"{org.name} \u00b7 Request #{row.id}")
+        canvas.drawRightString(page_w - margin, 0.5 * inch, f"Page {doc.page}")
+        canvas.restoreState()
+
+    frame = Frame(margin, 0.75 * inch, page_w - 2 * margin, page_h - margin - header_h - 0.75 * inch, showBoundary=0)
+    doc = BaseDocTemplate(buf, pagesize=LETTER, leftMargin=margin, rightMargin=margin, topMargin=margin, bottomMargin=margin, title=f"Request {row.id} - {org.name}")
+    doc.addPageTemplates([PageTemplate(id="letterhead", frames=[frame], onPage=_draw_header)])
+
+    story: list = []
+
+    # Metadata table
+    submitter_label = f"{submitter.full_name} &lt;{submitter.email}&gt;" if submitter else "Unknown"
+    meta_rows = [
+        ["Request type", row.request_type or ""],
+        ["Subject", row.subject or ""],
+        ["Status", (row.status.value if hasattr(row.status, "value") else str(row.status)).replace("_", " ").title()],
+        ["Submitted", row.created_at.strftime("%B %d, %Y \u00b7 %H:%M UTC")],
+        ["Submitted by", submitter_label.replace("&lt;", "<").replace("&gt;", ">")],
     ]
-    if row.notes:
-        lines += ["", "--- Internal notes (not emailed) ---", row.notes]
+    mt = Table(meta_rows, colWidths=[1.5 * inch, page_w - 2 * margin - 1.5 * inch])
+    mt.setStyle(TableStyle([
+        ("FONT", (0, 0), (-1, -1), "Helvetica", 10),
+        ("FONT", (0, 0), (0, -1), "Helvetica-Bold", 10),
+        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#475569")),
+        ("TEXTCOLOR", (1, 0), (1, -1), colors.HexColor("#0f172a")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("LINEBELOW", (0, 0), (-1, -2), 0.25, colors.HexColor("#e2e8f0")),
+    ]))
+    story.append(mt)
+    story.append(Spacer(1, 12))
+
+    # Summary section: render each "Label: value" line as a two-column row.
+    story.append(Paragraph("Request details", h2))
+    sum_rows = []
+    for ln in summary:
+        if ": " in ln:
+            label, _, value = ln.partition(": ")
+        else:
+            label, value = ln, ""
+        sum_rows.append([Paragraph(f"<b>{label}</b>", body), Paragraph(value or "&nbsp;", body)])
+    if sum_rows:
+        st = Table(sum_rows, colWidths=[2.0 * inch, page_w - 2 * margin - 2.0 * inch])
+        st.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("LINEBELOW", (0, 0), (-1, -2), 0.25, colors.HexColor("#e2e8f0")),
+        ]))
+        story.append(st)
+
     if row.support_message:
-        lines += ["", "--- Message to support ---", row.support_message]
-    body = "\n".join(lines).encode("utf-8")
-    filename = f"request-{row.id}-{datetime.utcnow().strftime('%Y%m%d')}.txt"
+        story.append(Spacer(1, 14))
+        story.append(Paragraph("Message to support", h2))
+        for para in str(row.support_message).split("\n\n"):
+            story.append(Paragraph(para.replace("\n", "<br/>"), body))
+            story.append(Spacer(1, 4))
+
+    if row.notes:
+        story.append(Spacer(1, 14))
+        story.append(Paragraph("Internal notes", h2))
+        for para in str(row.notes).split("\n\n"):
+            story.append(Paragraph(para.replace("\n", "<br/>"), body))
+            story.append(Spacer(1, 4))
+
+    doc.build(story)
+    pdf = buf.getvalue()
+    buf.close()
+
+    filename = f"request-{row.id}-{datetime.utcnow().strftime('%Y%m%d')}.pdf"
     return StreamingResponse(
-        io.BytesIO(body),
-        media_type="text/plain",
+        io.BytesIO(pdf),
+        media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

@@ -12,3 +12,4 @@ email-validator==2.2.0
 python-slugify==8.0.4
 pyotp==2.9.0
 qrcode[pil]==7.4.2
+reportlab==4.2.5
