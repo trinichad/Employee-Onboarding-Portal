@@ -242,12 +242,16 @@ export default function OrgResources() {
                 </div>
               </div>
               <dl className="text-xs space-y-0.5">
-                {Object.entries(r.attributes || {}).filter(([, v]) => v).map(([k, v]) => (
-                  <div key={k} className="flex gap-2">
-                    <dt className="text-slate-500 capitalize w-24 shrink-0">{k.replace(/_/g, " ")}</dt>
-                    <dd className="text-slate-800 dark:text-slate-200 break-all">{String(v)}</dd>
-                  </div>
-                ))}
+                {meta.attrs.map((a) => {
+                  const v = r.attributes?.[a.key];
+                  if (v === undefined || v === null || v === "") return null;
+                  return (
+                    <div key={a.key} className="flex gap-2">
+                      <dt className="text-slate-500 w-24 shrink-0">{a.label}</dt>
+                      <dd className="text-slate-800 dark:text-slate-200 break-all">{String(v)}</dd>
+                    </div>
+                  );
+                })}
               </dl>
               {r.linked_resource_ids?.length > 0 && (
                 <div className="text-xs text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-700">
@@ -369,7 +373,17 @@ function ResourceModal({ resource, all, kinds, onClose, onSave, saving }: {
           <button
             className="btn-primary"
             disabled={!name.trim() || saving}
-            onClick={() => onSave({ ...resource, kind, name: name.trim(), attributes: attrs, linked_resource_ids: linked, is_active: isActive })}
+            onClick={() => {
+              // Drop any attribute keys that are no longer in the category
+              // schema so renames/removals clean up automatically when the
+              // resource is next saved.
+              const allowed = new Set(meta.attrs.map((a) => a.key));
+              const clean: Record<string, any> = {};
+              for (const [k, v] of Object.entries(attrs)) {
+                if (allowed.has(k)) clean[k] = v;
+              }
+              onSave({ ...resource, kind, name: name.trim(), attributes: clean, linked_resource_ids: linked, is_active: isActive });
+            }}
           >
             {saving ? "Saving…" : "Save"}
           </button>
@@ -866,7 +880,28 @@ function ManageKindsModal({ orgSlug, current, existingResources, branding, onClo
       }
 
       const next = { ...branding, resource_kinds: draft };
-      return orgApi.updateSettings(orgSlug, { branding: next });
+      const result = await orgApi.updateSettings(orgSlug, { branding: next });
+
+      // After saving the new schema, sweep every existing resource and drop
+      // any attribute key that is no longer defined in its category. Migrated
+      // renames are already in place above; this just removes true orphans
+      // (e.g. attribute deleted, or rename declined earlier).
+      const allowedByKind = new Map<string, Set<string>>();
+      for (const k of draft) {
+        allowedByKind.set(k.value, new Set(k.attrs.map((a) => a.key)));
+      }
+      for (const r of existingResources) {
+        const allowed = allowedByKind.get(r.kind);
+        if (!allowed) continue;
+        const current = r.attributes || {};
+        const orphans = Object.keys(current).filter((k) => !allowed.has(k));
+        if (orphans.length === 0) continue;
+        const cleaned = { ...current };
+        for (const k of orphans) delete cleaned[k];
+        await orgApi.updateResource(orgSlug, r.id, { attributes: cleaned });
+      }
+
+      return result;
     },
     onSuccess: () => { toast.success("Categories saved"); onSaved(); },
     onError: (e: any) => toast.error(e?.message || apiError(e)),
