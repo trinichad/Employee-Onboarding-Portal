@@ -31,6 +31,23 @@ export default function OrgFormBuilder() {
     }
     return DEFAULT_RESOURCE_KIND_LABELS;
   }, [org.data?.branding]);
+  // Attribute keys defined per resource category ("Manage resource categories").
+  // Empty array = no schema configured for that kind, so the editor falls back
+  // to a built-in suggestion list.
+  const kindAttrs = useMemo<Record<string, string[]>>(() => {
+    const cfg = (org.data?.branding as any)?.resource_kinds;
+    if (!Array.isArray(cfg)) return {};
+    const m: Record<string, string[]> = {};
+    for (const k of cfg) {
+      const v = String(k?.value || "").trim();
+      if (!v) continue;
+      const attrs = Array.isArray(k?.attrs) ? k.attrs : [];
+      m[v] = attrs
+        .map((a: any) => String(a?.key || "").trim())
+        .filter((s: string) => !!s);
+    }
+    return m;
+  }, [org.data?.branding]);
   const [doc, setDoc] = useState<FormSchemaDoc>({ form_name: "", request_types: [], fields: [], groups: [] });
   const [tab, setTab] = useState<"editor" | "json" | "preview">("editor");
   const [jsonText, setJsonText] = useState("");
@@ -162,7 +179,7 @@ export default function OrgFormBuilder() {
             </div>
           </div></div>
 
-          <FieldsEditor doc={doc} setDoc={setDoc} kindLabels={kindLabels} />
+          <FieldsEditor doc={doc} setDoc={setDoc} kindLabels={kindLabels} kindAttrs={kindAttrs} />
           <GroupsEditor doc={doc} setDoc={setDoc} />
         </div>
       )}
@@ -180,7 +197,7 @@ export default function OrgFormBuilder() {
   );
 }
 
-function FieldsEditor({ doc, setDoc, kindLabels }: { doc: FormSchemaDoc; setDoc: (d: FormSchemaDoc) => void; kindLabels: Record<string, string> }) {
+function FieldsEditor({ doc, setDoc, kindLabels, kindAttrs }: { doc: FormSchemaDoc; setDoc: (d: FormSchemaDoc) => void; kindLabels: Record<string, string>; kindAttrs: Record<string, string[]> }) {
   const fields = doc.fields || [];
   const requestTypes = doc.request_types || [];
   const update = (i: number, patch: Partial<any>) => {
@@ -215,6 +232,7 @@ function FieldsEditor({ doc, setDoc, kindLabels }: { doc: FormSchemaDoc; setDoc:
             allFields={fields}
             requestTypes={requestTypes}
             kindLabels={kindLabels}
+            kindAttrs={kindAttrs}
             onChange={(patch) => update(i, patch)}
             onMoveUp={() => move(i, -1)}
             onMoveDown={() => move(i, 1)}
@@ -258,11 +276,12 @@ const ROLE_OPTIONS: { value: string; label: string; help: string }[] = [
   { value: "grant_full_access_to", label: "Grant full mailbox access to (Termination)", help: "Marks this field as the 'grant access to' target." },
 ];
 
-function FieldEditor({ field, allFields, requestTypes, kindLabels, onChange, onMoveUp, onMoveDown, onRemove, isFirst, isLast }: {
+function FieldEditor({ field, allFields, requestTypes, kindLabels, kindAttrs, onChange, onMoveUp, onMoveDown, onRemove, isFirst, isLast }: {
   field: any;
   allFields: any[];
   requestTypes: string[];
   kindLabels: Record<string, string>;
+  kindAttrs: Record<string, string[]>;
   onChange: (patch: any) => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
@@ -277,7 +296,8 @@ function FieldEditor({ field, allFields, requestTypes, kindLabels, onChange, onM
   const sourceField = f.auto_from ? allFields.find((x) => x.id === f.auto_from!.source_field_id) : null;
   const sourceKind = sourceField?.resource_kind;
 
-  // Suggest reasonable attribute keys based on kind.
+  // Suggest reasonable attribute keys based on kind. Used only as a fallback
+  // when the org hasn't configured attributes for this category yet.
   const ATTR_SUGGESTIONS: Record<string, string[]> = {
     property: ["name", "address", "code", "notes"],
     shared_mailbox: ["name", "address", "owner"],
@@ -288,7 +308,19 @@ function FieldEditor({ field, allFields, requestTypes, kindLabels, onChange, onM
     email: ["name", "address"],
     other: ["name", "details"],
   };
-  const attrChoices = sourceKind ? ATTR_SUGGESTIONS[sourceKind] || ["name"] : ["name"];
+  // Prefer the attribute keys the admin actually configured under
+  // "Manage resource categories"; fall back to the built-in suggestions if
+  // the category has no configured attributes yet. "name" is always offered.
+  const attrChoices = useMemo<string[]>(() => {
+    if (!sourceKind) return ["name"];
+    const configured = kindAttrs[sourceKind] || [];
+    const fallback = ATTR_SUGGESTIONS[sourceKind] || [];
+    const merged: string[] = ["name"];
+    for (const k of [...configured, ...fallback]) {
+      if (k && !merged.includes(k)) merged.push(k);
+    }
+    return merged;
+  }, [sourceKind, kindAttrs]);
 
   // Discriminator: undefined = always visible; array (even empty) = restricted.
   const visibleAlways = f.visible_when_request_type_in === undefined;
