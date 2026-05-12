@@ -551,9 +551,9 @@ function GroupsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSch
               onChange={(patch) => setGroup(i, patch)}
             />
 
-            <div className="space-y-1">
+            <div className="space-y-3">
               {g.items.map((it, j) => (
-                <div key={j} className="space-y-1 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 p-2">
+                <div key={j} className="space-y-2 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 p-2">
                   <div className="grid grid-cols-12 gap-2 items-center">
                     <input className="input col-span-3" value={it.id} onChange={(e) => setGroup(i, { items: g.items.map((x, k) => k === j ? { ...x, id: e.target.value } : x) })} />
                     <input className="input col-span-4" value={it.label} onChange={(e) => setGroup(i, { items: g.items.map((x, k) => k === j ? { ...x, label: e.target.value } : x) })} />
@@ -565,11 +565,10 @@ function GroupsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSch
                     </div>
                   </div>
                   {!g.dynamic && resourceFields.length > 0 && (
-                    <div className="pl-3 mt-1 pt-1 border-t border-dashed border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                      <span className="font-medium">{it.label || it.id} —</span>
-                      <span>auto-check based on:</span>
+                    <div className="pl-3 pt-1 border-t border-dashed border-slate-200 dark:border-slate-700 flex items-center gap-2 text-xs text-slate-500 whitespace-nowrap overflow-x-auto">
+                      <span className="shrink-0">Auto-check based on:</span>
                       <select
-                        className="input text-xs py-1"
+                        className="input text-xs py-1 w-56 shrink-0"
                         value={it.auto_check_from?.source_field_id || ""}
                         onChange={(e) => {
                           const sid = e.target.value;
@@ -590,9 +589,9 @@ function GroupsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSch
                       </select>
                       {it.auto_check_from?.source_field_id && (
                         <>
-                          <span>resource attribute</span>
+                          <span className="shrink-0">resource attribute</span>
                           <input
-                            className="input text-xs py-1 w-44 font-mono"
+                            className="input text-xs py-1 w-44 font-mono shrink-0"
                             placeholder="e.g. adobe_acrobat"
                             value={it.auto_check_from.attribute || ""}
                             onChange={(e) => setGroup(i, {
