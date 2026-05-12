@@ -803,6 +803,68 @@ function ManageKindsModal({ orgSlug, current, existingResources, branding, onClo
     mutationFn: async () => {
       const err = validate();
       if (err) throw new Error(err);
+
+      // Detect attribute key renames by matching old vs new categories by
+      // their internal value (slug), then comparing attrs position-by-position.
+      // When the slug is unchanged but the key at the same position changed,
+      // and the old key isn't being reintroduced elsewhere in the same
+      // category, treat it as a rename and migrate existing resources so
+      // their data moves to the new key instead of being orphaned.
+      const renames: { kind: string; renames: { from: string; to: string }[] }[] = [];
+      const byValue = new Map(current.map((k) => [k.value, k]));
+      for (const k of draft) {
+        const old = byValue.get(k.value);
+        if (!old) continue;
+        const newKeys = new Set(k.attrs.map((a) => a.key));
+        const oldKeys = new Set(old.attrs.map((a) => a.key));
+        const pairs: { from: string; to: string }[] = [];
+        const len = Math.min(old.attrs.length, k.attrs.length);
+        for (let i = 0; i < len; i++) {
+          const from = old.attrs[i].key;
+          const to = k.attrs[i].key;
+          if (from === to) continue;
+          // Only treat as a rename if the old key no longer exists in the
+          // new schema and the new key didn't already exist in the old one.
+          if (!newKeys.has(from) && !oldKeys.has(to)) {
+            pairs.push({ from, to });
+          }
+        }
+        if (pairs.length > 0) renames.push({ kind: k.value, renames: pairs });
+      }
+
+      if (renames.length > 0) {
+        const summary = renames
+          .map((r) => `• ${r.kind}: ${r.renames.map((p) => `${p.from} → ${p.to}`).join(", ")}`)
+          .join("\n");
+        const ok = window.confirm(
+          `You renamed attribute keys:\n\n${summary}\n\nMove existing resource values from the old keys to the new ones?\n\nCancel to keep both keys (existing data stays under the old name).`,
+        );
+        if (ok) {
+          // Migrate each affected resource. Doing this client-side keeps the
+          // backend untouched and the change atomic from the user's view.
+          for (const group of renames) {
+            const affected = existingResources.filter((r) => r.kind === group.kind);
+            for (const r of affected) {
+              const attrs = { ...(r.attributes || {}) };
+              let touched = false;
+              for (const { from, to } of group.renames) {
+                if (Object.prototype.hasOwnProperty.call(attrs, from)) {
+                  // Don't clobber an existing value at the destination key.
+                  if (attrs[to] === undefined || attrs[to] === "" || attrs[to] === null) {
+                    attrs[to] = attrs[from];
+                  }
+                  delete attrs[from];
+                  touched = true;
+                }
+              }
+              if (touched) {
+                await orgApi.updateResource(orgSlug, r.id, { attributes: attrs });
+              }
+            }
+          }
+        }
+      }
+
       const next = { ...branding, resource_kinds: draft };
       return orgApi.updateSettings(orgSlug, { branding: next });
     },

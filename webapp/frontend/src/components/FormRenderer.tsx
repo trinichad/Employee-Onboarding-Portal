@@ -125,8 +125,9 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
         } else if (cur !== undefined && cur !== null && cur !== "") {
           defaultChecked = isTruthyAttr(cur);
         }
-        if (!nextGroups) nextGroups = { ...(values._groups || {}) };
-        nextGroups[g.id] = { ...(nextGroups[g.id] || {}), [it.id]: defaultChecked };
+        const ng: Record<string, any> = nextGroups ?? { ...(values._groups || {}) };
+        ng[g.id] = { ...(ng[g.id] || {}), [it.id]: defaultChecked };
+        nextGroups = ng;
       }
     }
     if (nextGroups) {
