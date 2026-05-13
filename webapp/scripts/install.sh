@@ -11,7 +11,7 @@
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-RUN_USER="${SUDO_USER:-${USER}}"
+RUN_USER="${SUDO_USER:-${USER:-$(id -un)}}"
 BACKEND_DIR="$APP_DIR/webapp/backend"
 FRONTEND_DIR="$APP_DIR/webapp/frontend"
 
