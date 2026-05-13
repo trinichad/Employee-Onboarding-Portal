@@ -236,17 +236,183 @@ def delete_org(
     db: Session = Depends(get_db),
     current: CurrentUser = Depends(require_global_admin),
 ) -> dict:
+    from app.models import Employee, OrgResource, PasswordResetToken
+    from app.services.branding import delete_logo
+
     org = db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
     if body.confirm_name.strip() != org.name:
         raise HTTPException(status_code=400, detail="Confirmation does not match organization name")
     name = org.name
+    slug = org.slug
+
+    # Explicitly wipe every org-scoped table. Most have ON DELETE CASCADE at
+    # the schema level, but SQLite historically didn't enforce FKs (we now
+    # enable the pragma in db/session.py, but older deployments may already
+    # have orphan rows). Doing it here guarantees a clean slate so recreating
+    # the org with the same slug/name starts fresh.
+    user_ids = [uid for (uid,) in db.query(User.id).filter(User.organization_id == org.id).all()]
+    if user_ids:
+        db.query(PasswordResetToken).filter(PasswordResetToken.user_id.in_(user_ids)).delete(synchronize_session=False)
+    db.query(InviteToken).filter(InviteToken.organization_id == org.id).delete(synchronize_session=False)
+    db.query(EmployeeRequest).filter(EmployeeRequest.organization_id == org.id).delete(synchronize_session=False)
+    db.query(Employee).filter(Employee.organization_id == org.id).delete(synchronize_session=False)
+    db.query(OrgResource).filter(OrgResource.organization_id == org.id).delete(synchronize_session=False)
+    db.query(FormSchema).filter(FormSchema.organization_id == org.id).delete(synchronize_session=False)
+    db.query(User).filter(User.organization_id == org.id).delete(synchronize_session=False)
+    # Audit rows reference the org via SET NULL — leave them, but null them
+    # out so a new org reusing this PK can't appear to "inherit" old history.
+    db.query(AuditLog).filter(AuditLog.organization_id == org.id).update(
+        {AuditLog.organization_id: None}, synchronize_session=False,
+    )
+
     db.delete(org)
+    # Remove the on-disk logo file too so the next org with this id starts clean.
+    try:
+        delete_logo(f"org-{org_id}")
+    except OSError:
+        pass
+
     audit(db, actor_id=current.user.id, action="org.delete", organization_id=None,
-          target_type="organization", target_id=org_id, meta={"name": name})
+          target_type="organization", target_id=org_id, meta={"name": name, "slug": slug})
     db.commit()
     return {"deleted": True, "id": org_id, "name": name}
+
+
+# ---------- Organization export / import ----------
+@router.get("/organizations/{org_id}/export")
+def export_org(
+    org_id: int,
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_global_admin),
+):
+    """Download a JSON export of a single organization (users, forms,
+    resources, employees, requests, logo, SMTP override, settings)."""
+    import io
+    import json
+    from fastapi.responses import StreamingResponse
+    from app.services.org_export import export_payload
+
+    org = db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    payload = export_payload(db, [org])
+    audit(db, actor_id=current.user.id, action="org.export", organization_id=org.id,
+          target_type="organization", target_id=org.id, meta={"name": org.name})
+    db.commit()
+    stamp = _now().strftime("%Y%m%d-%H%M%S")
+    filename = f"org-{org.slug}-{stamp}.json"
+    data = json.dumps(payload, indent=2).encode("utf-8")
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/organizations/export")
+def export_all_orgs(
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_global_admin),
+):
+    """Download a JSON export containing every organization on the platform."""
+    import io
+    import json
+    from fastapi.responses import StreamingResponse
+    from app.services.org_export import export_payload
+
+    orgs = db.query(Organization).order_by(Organization.name).all()
+    payload = export_payload(db, orgs)
+    audit(db, actor_id=current.user.id, action="org.export_all",
+          organization_id=None, target_type="organization", target_id=None,
+          meta={"count": len(orgs)})
+    db.commit()
+    stamp = _now().strftime("%Y%m%d-%H%M%S")
+    filename = f"organizations-{stamp}.json"
+    data = json.dumps(payload, indent=2).encode("utf-8")
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/organizations/import")
+async def import_orgs(
+    file: UploadFile = File(...),
+    slug_override: Optional[str] = Query(default=None, description="If exactly one org is in the file, store it under this slug instead of the original."),
+    name_override: Optional[str] = Query(default=None, description="If exactly one org is in the file, override its name."),
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_global_admin),
+) -> dict:
+    """Import one or more organizations from a JSON export file.
+
+    Accepts both ``{version, organizations: [...]}`` envelopes and a bare
+    single-org object. Each org is created with a fresh ID; if its slug is
+    already taken the entire import is rolled back unless ``slug_override``
+    is provided (single-org imports only).
+    """
+    import json
+    from app.services.org_export import import_organization
+
+    try:
+        raw = await file.read()
+        parsed = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON file: {exc}") from exc
+
+    if isinstance(parsed, dict) and isinstance(parsed.get("organizations"), list):
+        org_payloads = parsed["organizations"]
+    elif isinstance(parsed, dict) and parsed.get("slug"):
+        org_payloads = [parsed]
+    elif isinstance(parsed, list):
+        org_payloads = parsed
+    else:
+        raise HTTPException(status_code=400, detail="File does not contain any organizations")
+
+    if not org_payloads:
+        raise HTTPException(status_code=400, detail="File contains no organizations")
+
+    if (slug_override or name_override) and len(org_payloads) != 1:
+        raise HTTPException(
+            status_code=400,
+            detail="slug_override / name_override only apply when the file contains exactly one organization",
+        )
+
+    results: list[dict] = []
+    try:
+        for i, op in enumerate(org_payloads):
+            if not isinstance(op, dict):
+                raise HTTPException(status_code=400, detail=f"Organization #{i+1} is not an object")
+            org, stats = import_organization(
+                db,
+                op,
+                slug_override=slug_override if len(org_payloads) == 1 else None,
+                name_override=name_override if len(org_payloads) == 1 else None,
+            )
+            audit(
+                db,
+                actor_id=current.user.id,
+                action="org.import",
+                organization_id=org.id,
+                target_type="organization",
+                target_id=org.id,
+                meta={"name": org.name, "stats": stats},
+            )
+            results.append({"id": org.id, **stats})
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Import failed: {exc}") from exc
+
+    return {"imported": len(results), "organizations": results}
 
 
 # ---------- Users (cross-org) ----------

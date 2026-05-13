@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
-import { Plus, ExternalLink } from "lucide-react";
+import { Plus, ExternalLink, Download, Upload } from "lucide-react";
 import { adminApi } from "@/api";
 import { apiError } from "@/api/client";
 import { Modal } from "@/components/Modal";
@@ -16,6 +16,7 @@ export default function AdminOrgs() {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [seed, setSeed] = useState(true);
+  const importRef = useRef<HTMLInputElement | null>(null);
 
   const create = useMutation({
     mutationFn: () => adminApi.createOrg({ name, slug: slug || undefined, seed_default_form: seed }),
@@ -27,10 +28,59 @@ export default function AdminOrgs() {
     onError: (e) => toast.error(apiError(e)),
   });
 
+  const onImportFile = async (file: File) => {
+    const t = toast.loading(`Importing ${file.name}…`);
+    try {
+      const res = await adminApi.importOrgs(file);
+      const names = res.organizations.map((o) => o.name).join(", ");
+      toast.success(`Imported ${res.imported} organization${res.imported === 1 ? "" : "s"}: ${names}`, { id: t });
+      qc.invalidateQueries({ queryKey: ["orgs"] });
+    } catch (e) {
+      toast.error(apiError(e), { id: t });
+    } finally {
+      if (importRef.current) importRef.current.value = "";
+    }
+  };
+
+  const onExportAll = async () => {
+    const t = toast.loading("Building export…");
+    try {
+      const r = await adminApi.exportAllOrgs();
+      const url = URL.createObjectURL(r.data as unknown as Blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const cd = (r.headers as any)["content-disposition"] || "";
+      const m = /filename="?([^"]+)"?/.exec(cd);
+      a.download = m?.[1] || `organizations-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Export downloaded", { id: t });
+    } catch (e) {
+      toast.error(apiError(e), { id: t });
+    }
+  };
+
   return (
     <>
       <PageHeader title="Organizations" description="Each client gets an isolated organization."
-        actions={<button className="btn-primary" onClick={() => setOpen(true)}><Plus size={16} /> New organization</button>} />
+        actions={<>
+          <input
+            ref={importRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) void onImportFile(f); }}
+          />
+          <button className="btn-secondary" onClick={() => importRef.current?.click()} title="Import organizations from a JSON export file">
+            <Upload size={16} /> Import
+          </button>
+          <button className="btn-secondary" onClick={onExportAll} title="Download a JSON export of every organization">
+            <Download size={16} /> Export all
+          </button>
+          <button className="btn-primary" onClick={() => setOpen(true)}><Plus size={16} /> New organization</button>
+        </>} />
 
       {orgs.isLoading ? <Spinner /> :
         (orgs.data?.length === 0 ? (

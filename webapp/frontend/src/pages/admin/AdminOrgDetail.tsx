@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import toast from "react-hot-toast";
-import { AlertTriangle, KeyRound, Trash2, UserPlus } from "lucide-react";
+import { AlertTriangle, KeyRound, Trash2, UserPlus, Download } from "lucide-react";
 import { adminApi, orgApi } from "@/api";
 import { apiError } from "@/api/client";
 import { Modal } from "@/components/Modal";
@@ -65,6 +65,26 @@ export default function AdminOrgDetail() {
   if (orgs.isLoading) return <Spinner />;
   if (!org) return <div>Organization not found.</div>;
 
+  const exportOrg = async () => {
+    const t = toast.loading("Building export…");
+    try {
+      const r = await adminApi.exportOrg(id);
+      const url = URL.createObjectURL(r.data as unknown as Blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const cd = (r.headers as any)["content-disposition"] || "";
+      const m = /filename="?([^"]+)"?/.exec(cd);
+      a.download = m?.[1] || `org-${org.slug}-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Export downloaded", { id: t });
+    } catch (e) {
+      toast.error(apiError(e), { id: t });
+    }
+  };
+
   return (
     <>
       <PageHeader title={org.name} description={`Slug: ${org.slug} · Created ${formatDate(org.created_at)}`}
@@ -72,6 +92,9 @@ export default function AdminOrgDetail() {
           <Link className="btn-secondary" to={`/${org.slug}`} target="_blank">Open portal ↗</Link>
           <Link className="btn-secondary" to={`/${org.slug}/resources`}>Manage Resources</Link>
           <Link className="btn-secondary" to={`/${org.slug}/form`}>Form Builder</Link>
+          <button className="btn-secondary" onClick={exportOrg} title="Download a JSON export of this organization (users, forms, resources, employees, requests, logo)">
+            <Download size={14} /> Export
+          </button>
           <button className="btn-primary" onClick={() => setInviteOpen(true)}><UserPlus size={14} /> Invite Client Admin</button>
         </>} />
 

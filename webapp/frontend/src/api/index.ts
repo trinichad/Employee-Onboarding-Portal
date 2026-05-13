@@ -74,6 +74,22 @@ export const adminApi = {
     api.patch<Organization>(`/admin/organizations/${id}`, data).then(r => r.data),
   deleteOrg: (id: number, confirm_name: string) =>
     api.post(`/admin/organizations/${id}/delete`, { confirm_name }),
+  exportOrg: (id: number) =>
+    api.get<Blob>(`/admin/organizations/${id}/export`, { responseType: "blob" }).then(r => r),
+  exportAllOrgs: () =>
+    api.get<Blob>(`/admin/organizations/export`, { responseType: "blob" }).then(r => r),
+  importOrgs: (file: File, opts?: { slug_override?: string; name_override?: string }) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return api.post<{ imported: number; organizations: Array<{ id: number; slug: string; name: string; users: number; form_schemas: number; resources: number; requests: number; employees: number; logo: boolean }> }>(
+      "/admin/organizations/import",
+      fd,
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+        params: opts,
+      },
+    ).then(r => r.data);
+  },
   inviteClientAdmin: (orgId: number, email: string, full_name: string) =>
     api.post<User>(`/admin/organizations/${orgId}/client-admins`, { email, full_name, role: "client_admin" }).then(r => r.data),
   inviteUser: (data: { email: string; full_name: string; role: Role; organization_id?: number | null }) =>

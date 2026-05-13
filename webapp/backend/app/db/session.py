@@ -2,13 +2,28 @@ from __future__ import annotations
 
 from typing import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import settings
 
 connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(settings.DATABASE_URL, future=True, connect_args=connect_args, pool_pre_ping=True)
+
+
+# SQLite does not enforce foreign keys (and therefore ON DELETE CASCADE) by
+# default. Enable the pragma on every new connection so that deleting an
+# organization actually wipes its children rather than leaving orphans behind.
+if settings.DATABASE_URL.startswith("sqlite"):
+    @event.listens_for(engine, "connect")
+    def _sqlite_fk_pragma(dbapi_connection, _connection_record):  # noqa: ANN001
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA foreign_keys=ON")
+        finally:
+            cursor.close()
+
+
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 
