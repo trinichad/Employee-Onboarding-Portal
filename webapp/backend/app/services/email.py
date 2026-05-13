@@ -104,6 +104,7 @@ def _send_via_smtp2go_api(
     body: str,
     sender: str,
     attachments: Optional[Sequence[EmailAttachment]] = None,
+    html_body: Optional[str] = None,
 ) -> None:
     """Send a single message via SMTP2GO's HTTP API.
 
@@ -119,6 +120,8 @@ def _send_via_smtp2go_api(
         "subject": subject,
         "text_body": body,
     }
+    if html_body:
+        payload["html_body"] = html_body
     if attachments:
         payload["attachments"] = [
             {
@@ -209,6 +212,7 @@ def send_email(
     smtp: Optional[SmtpConfig] = None,
     raise_on_error: bool = False,
     attachments: Optional[Sequence[EmailAttachment]] = None,
+    html_body: Optional[str] = None,
 ) -> None:
     """Send via SMTP if configured; otherwise print to stdout (dev mode).
 
@@ -235,7 +239,7 @@ def send_email(
         try:
             _send_via_smtp2go_api(
                 cfg, to=to, subject=subject, body=body, sender=bare_sender,
-                attachments=attachments,
+                attachments=attachments, html_body=html_body,
             )
         except Exception as exc:
             print(f"[email] http_api failed: {exc}", flush=True)
@@ -247,6 +251,8 @@ def send_email(
     msg["To"] = to
     msg["Subject"] = subject
     msg.set_content(body)
+    if html_body:
+        msg.add_alternative(html_body, subtype="html")
     for filename, mimetype, content in attachments or ():
         maintype, _, subtype = (mimetype or "application/octet-stream").partition("/")
         msg.add_attachment(content, maintype=maintype or "application", subtype=subtype or "octet-stream", filename=filename)
@@ -286,19 +292,89 @@ def smtp_test(cfg: SmtpConfig) -> Tuple[bool, str]:
         return False, f"{type(exc).__name__}: {exc}"
 
 
+def _html_escape(s: str) -> str:
+    import html as _html
+    return _html.escape(s or "", quote=True)
+
+
+# Shared inline styles for transactional emails. Email clients require inline
+# CSS, so each tag carries its own `style=` attribute.
+_EMAIL_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+_COL_TEXT = "#0f172a"
+_COL_MUTED = "#64748b"
+_COL_BORDER = "#e2e8f0"
+_COL_BG = "#f8fafc"
+_COL_ACCENT = "#2563eb"
+_COL_WARN_BG = "#fef3c7"
+_COL_WARN_BORDER = "#f59e0b"
+_COL_WARN_TEXT = "#92400e"
+
+
+def _html_shell(*, title: str, inner: str) -> str:
+    """Wrap inner HTML in an email-safe centered card layout."""
+    return f"""<!doctype html>
+<html><head><meta charset=\"utf-8\"><title>{_html_escape(title)}</title></head>
+<body style=\"margin:0;padding:24px;background:{_COL_BG};font-family:{_EMAIL_FONT};color:{_COL_TEXT};\">
+  <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"max-width:640px;margin:0 auto;background:#ffffff;border:1px solid {_COL_BORDER};border-radius:8px;\">
+    <tr><td style=\"padding:24px 28px;\">{inner}</td></tr>
+  </table>
+  <div style=\"max-width:640px;margin:12px auto 0;font-family:{_EMAIL_FONT};color:{_COL_MUTED};font-size:12px;text-align:center;\">
+    Sent by the Employee Onboarding Portal
+  </div>
+</body></html>"""
+
+
+def _summary_table_html(payload_text: str) -> str:
+    """Render lines of `Label: value` into a two-column table."""
+    rows_html: list[str] = []
+    for ln in (payload_text or "").splitlines():
+        if not ln.strip():
+            continue
+        if ": " in ln:
+            label, _, value = ln.partition(": ")
+        else:
+            label, value = ln, ""
+        rows_html.append(
+            f"<tr>"
+            f"<td style=\"padding:8px 12px;border-bottom:1px solid {_COL_BORDER};color:{_COL_MUTED};font-size:13px;font-weight:600;vertical-align:top;width:38%;\">{_html_escape(label)}</td>"
+            f"<td style=\"padding:8px 12px;border-bottom:1px solid {_COL_BORDER};color:{_COL_TEXT};font-size:13px;vertical-align:top;\">{_html_escape(value) or '&nbsp;'}</td>"
+            f"</tr>"
+        )
+    if not rows_html:
+        return f"<p style=\"color:{_COL_MUTED};font-size:13px;\">(no fields filled in)</p>"
+    return (
+        f"<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" "
+        f"style=\"border-collapse:collapse;border:1px solid {_COL_BORDER};border-radius:6px;overflow:hidden;\">"
+        + "".join(rows_html)
+        + "</table>"
+    )
+
+
 def invite_email(to: str, org_name: Optional[str], invite_url: str,
                  from_addr: Optional[str] = None, from_name: Optional[str] = None,
                  smtp: Optional[SmtpConfig] = None,
                  raise_on_error: bool = False) -> None:
     org = f" to {org_name}" if org_name else ""
+    text = (
+        f"You've been invited{org} on the Employee Onboarding Portal.\n\n"
+        f"Click the link below to set your password and activate your account:\n{invite_url}\n\n"
+        f"This link expires in 7 days."
+    )
+    html = _html_shell(
+        title=f"You've been invited{org}",
+        inner=(
+            f"<h1 style=\"margin:0 0 12px;font-size:20px;color:{_COL_TEXT};\">You've been invited{_html_escape(org)}</h1>"
+            f"<p style=\"margin:0 0 16px;font-size:14px;line-height:1.5;\">You've been invited to the Employee Onboarding Portal. Click the button below to set your password and activate your account.</p>"
+            f"<p style=\"margin:16px 0;\"><a href=\"{_html_escape(invite_url)}\" style=\"display:inline-block;background:{_COL_ACCENT};color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:600;font-size:14px;\">Activate your account</a></p>"
+            f"<p style=\"margin:16px 0 0;font-size:12px;color:{_COL_MUTED};\">Or paste this link into your browser:<br><span style=\"word-break:break-all;\">{_html_escape(invite_url)}</span></p>"
+            f"<p style=\"margin:12px 0 0;font-size:12px;color:{_COL_MUTED};\">This link expires in 7 days.</p>"
+        ),
+    )
     send_email(
         to=to,
         subject=f"You've been invited{org}",
-        body=(
-            f"You've been invited{org} on the Employee Onboarding Portal.\n\n"
-            f"Click the link below to set your password and activate your account:\n{invite_url}\n\n"
-            f"This link expires in 7 days."
-        ),
+        body=text,
+        html_body=html,
         from_addr=from_addr,
         from_name=from_name,
         smtp=smtp,
@@ -310,14 +386,25 @@ def reset_email(to: str, reset_url: str,
                 from_addr: Optional[str] = None, from_name: Optional[str] = None,
                 smtp: Optional[SmtpConfig] = None,
                 raise_on_error: bool = False) -> None:
+    text = (
+        f"A password reset was requested for your account.\n\n"
+        f"Click the link below to choose a new password:\n{reset_url}\n\n"
+        f"If you didn't request this, you can ignore this email. The link expires in 1 hour."
+    )
+    html = _html_shell(
+        title="Password reset",
+        inner=(
+            f"<h1 style=\"margin:0 0 12px;font-size:20px;color:{_COL_TEXT};\">Password reset</h1>"
+            f"<p style=\"margin:0 0 16px;font-size:14px;line-height:1.5;\">A password reset was requested for your account. Click the button below to choose a new password.</p>"
+            f"<p style=\"margin:16px 0;\"><a href=\"{_html_escape(reset_url)}\" style=\"display:inline-block;background:{_COL_ACCENT};color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:600;font-size:14px;\">Choose a new password</a></p>"
+            f"<p style=\"margin:16px 0 0;font-size:12px;color:{_COL_MUTED};\">If you didn't request this, you can ignore this email. The link expires in 1 hour.</p>"
+        ),
+    )
     send_email(
         to=to,
         subject="Password reset",
-        body=(
-            f"A password reset was requested for your account.\n\n"
-            f"Click the link below to choose a new password:\n{reset_url}\n\n"
-            f"If you didn't request this, you can ignore this email. The link expires in 1 hour."
-        ),
+        body=text,
+        html_body=html,
         from_addr=from_addr,
         from_name=from_name,
         smtp=smtp,
@@ -328,15 +415,30 @@ def reset_email(to: str, reset_url: str,
 def approval_request_email(to: str, org_name: str, request_id: int, subject: str, submitter: str, link: str,
                            from_addr: Optional[str] = None, from_name: Optional[str] = None,
                            smtp: Optional[SmtpConfig] = None) -> None:
+    text = (
+        f"A new employee request has been submitted and is awaiting approval.\n\n"
+        f"Request: #{request_id} — {subject}\n"
+        f"Submitted by: {submitter}\n\n"
+        f"Review and approve here:\n{link}\n"
+    )
+    html = _html_shell(
+        title=f"Request #{request_id} awaiting approval",
+        inner=(
+            f"<div style=\"font-size:12px;color:{_COL_MUTED};letter-spacing:0.04em;text-transform:uppercase;margin-bottom:6px;\">{_html_escape(org_name)}</div>"
+            f"<h1 style=\"margin:0 0 8px;font-size:20px;color:{_COL_TEXT};\">Request awaiting approval</h1>"
+            f"<p style=\"margin:0 0 16px;font-size:14px;line-height:1.5;\">A new employee request has been submitted and is awaiting your approval.</p>"
+            f"<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"border-collapse:collapse;border:1px solid {_COL_BORDER};border-radius:6px;overflow:hidden;margin:0 0 16px;\">"
+            f"<tr><td style=\"padding:8px 12px;border-bottom:1px solid {_COL_BORDER};color:{_COL_MUTED};font-size:13px;font-weight:600;width:38%;\">Request</td><td style=\"padding:8px 12px;border-bottom:1px solid {_COL_BORDER};font-size:13px;\">#{request_id} &mdash; {_html_escape(subject)}</td></tr>"
+            f"<tr><td style=\"padding:8px 12px;color:{_COL_MUTED};font-size:13px;font-weight:600;\">Submitted by</td><td style=\"padding:8px 12px;font-size:13px;\">{_html_escape(submitter)}</td></tr>"
+            f"</table>"
+            f"<p style=\"margin:16px 0;\"><a href=\"{_html_escape(link)}\" style=\"display:inline-block;background:{_COL_ACCENT};color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:600;font-size:14px;\">Review &amp; approve</a></p>"
+        ),
+    )
     send_email(
         to=to,
         subject=f"[{org_name}] New employee request awaiting approval — #{request_id}",
-        body=(
-            f"A new employee request has been submitted and is awaiting approval.\n\n"
-            f"Request: #{request_id} — {subject}\n"
-            f"Submitted by: {submitter}\n\n"
-            f"Review and approve here:\n{link}\n"
-        ),
+        body=text,
+        html_body=html,
         from_addr=from_addr,
         from_name=from_name,
         smtp=smtp,
@@ -346,15 +448,30 @@ def approval_request_email(to: str, org_name: str, request_id: int, subject: str
 def approved_notification_email(to: str, org_name: str, request_id: int, subject: str, approver: str, link: str,
                                 from_addr: Optional[str] = None, from_name: Optional[str] = None,
                                 smtp: Optional[SmtpConfig] = None) -> None:
+    text = (
+        f"Your request has been approved and is ready to be sent to support.\n\n"
+        f"Request: #{request_id} — {subject}\n"
+        f"Approved by: {approver}\n\n"
+        f"Open it here:\n{link}\n"
+    )
+    html = _html_shell(
+        title=f"Request #{request_id} approved",
+        inner=(
+            f"<div style=\"font-size:12px;color:{_COL_MUTED};letter-spacing:0.04em;text-transform:uppercase;margin-bottom:6px;\">{_html_escape(org_name)}</div>"
+            f"<h1 style=\"margin:0 0 8px;font-size:20px;color:{_COL_TEXT};\">Request approved &mdash; ready to send</h1>"
+            f"<p style=\"margin:0 0 16px;font-size:14px;line-height:1.5;\">Your request has been approved and is ready to be sent to support.</p>"
+            f"<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"border-collapse:collapse;border:1px solid {_COL_BORDER};border-radius:6px;overflow:hidden;margin:0 0 16px;\">"
+            f"<tr><td style=\"padding:8px 12px;border-bottom:1px solid {_COL_BORDER};color:{_COL_MUTED};font-size:13px;font-weight:600;width:38%;\">Request</td><td style=\"padding:8px 12px;border-bottom:1px solid {_COL_BORDER};font-size:13px;\">#{request_id} &mdash; {_html_escape(subject)}</td></tr>"
+            f"<tr><td style=\"padding:8px 12px;color:{_COL_MUTED};font-size:13px;font-weight:600;\">Approved by</td><td style=\"padding:8px 12px;font-size:13px;\">{_html_escape(approver)}</td></tr>"
+            f"</table>"
+            f"<p style=\"margin:16px 0;\"><a href=\"{_html_escape(link)}\" style=\"display:inline-block;background:{_COL_ACCENT};color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:600;font-size:14px;\">Open request</a></p>"
+        ),
+    )
     send_email(
         to=to,
         subject=f"[{org_name}] Request #{request_id} approved — ready to send",
-        body=(
-            f"Your request has been approved and is ready to be sent to support.\n\n"
-            f"Request: #{request_id} — {subject}\n"
-            f"Approved by: {approver}\n\n"
-            f"Open it here:\n{link}\n"
-        ),
+        body=text,
+        html_body=html,
         from_addr=from_addr,
         from_name=from_name,
         smtp=smtp,
@@ -400,10 +517,58 @@ def support_submission_email(to: str, org_name: str, request_id: int, subject: s
     }
     rt_key = (request_type or "").strip().lower()
     rt_label = rt_label_map.get(rt_key) or (f"{request_type.strip()} Request" if request_type and request_type.strip() else "Employee Request")
+
+    # HTML version
+    if is_resubmission:
+        banner = (
+            f"<div style=\"background:{_COL_WARN_BG};border-left:4px solid {_COL_WARN_BORDER};color:{_COL_WARN_TEXT};"
+            f"padding:10px 14px;border-radius:4px;font-size:13px;margin:0 0 16px;\">"
+            f"<strong>Updated version (revision {revision}).</strong> Please use this copy and disregard "
+            f"the previously sent request."
+            f"</div>"
+        )
+        heading = f"{_html_escape(rt_label)} &mdash; updated"
+    else:
+        banner = ""
+        heading = _html_escape(rt_label)
+
+    message_block = ""
+    if message:
+        msg_html = _html_escape(message).replace("\n", "<br>")
+        message_block = (
+            f"<h2 style=\"margin:20px 0 8px;font-size:14px;color:{_COL_TEXT};text-transform:uppercase;letter-spacing:0.04em;\">Message to support</h2>"
+            f"<div style=\"background:{_COL_BG};border:1px solid {_COL_BORDER};border-radius:6px;padding:12px 14px;font-size:13px;line-height:1.5;\">{msg_html}</div>"
+        )
+
+    pdf_note = ""
+    if attachments:
+        pdf_note = (
+            f"<p style=\"margin:16px 0 0;font-size:12px;color:{_COL_MUTED};\">A formatted PDF copy of this request is attached for your records.</p>"
+        )
+
+    inner = (
+        f"<div style=\"font-size:12px;color:{_COL_MUTED};letter-spacing:0.04em;text-transform:uppercase;margin-bottom:6px;\">{_html_escape(org_name)}</div>"
+        f"<h1 style=\"margin:0 0 4px;font-size:22px;color:{_COL_TEXT};\">{heading}</h1>"
+        f"<div style=\"font-size:14px;color:{_COL_MUTED};margin:0 0 16px;\">Request #{request_id} &middot; {_html_escape(subject)}</div>"
+        f"{banner}"
+        f"<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"border-collapse:collapse;border:1px solid {_COL_BORDER};border-radius:6px;overflow:hidden;margin:0 0 8px;\">"
+        f"<tr><td style=\"padding:8px 12px;border-bottom:1px solid {_COL_BORDER};color:{_COL_MUTED};font-size:13px;font-weight:600;width:38%;\">Request</td><td style=\"padding:8px 12px;border-bottom:1px solid {_COL_BORDER};font-size:13px;\">#{request_id}</td></tr>"
+        f"<tr><td style=\"padding:8px 12px;border-bottom:1px solid {_COL_BORDER};color:{_COL_MUTED};font-size:13px;font-weight:600;\">Type</td><td style=\"padding:8px 12px;border-bottom:1px solid {_COL_BORDER};font-size:13px;\">{_html_escape(rt_label)}</td></tr>"
+        f"<tr><td style=\"padding:8px 12px;{'border-bottom:1px solid ' + _COL_BORDER + ';' if is_resubmission else ''}color:{_COL_MUTED};font-size:13px;font-weight:600;\">Submitter</td><td style=\"padding:8px 12px;{'border-bottom:1px solid ' + _COL_BORDER + ';' if is_resubmission else ''}font-size:13px;\">{_html_escape(submitter)}</td></tr>"
+        + (f"<tr><td style=\"padding:8px 12px;color:{_COL_MUTED};font-size:13px;font-weight:600;\">Revision</td><td style=\"padding:8px 12px;font-size:13px;\">{revision}</td></tr>" if is_resubmission else "")
+        + f"</table>"
+        f"{message_block}"
+        f"<h2 style=\"margin:20px 0 8px;font-size:14px;color:{_COL_TEXT};text-transform:uppercase;letter-spacing:0.04em;\">Request details</h2>"
+        f"{_summary_table_html(payload_text)}"
+        f"{pdf_note}"
+    )
+    html = _html_shell(title=f"{rt_label} #{request_id}", inner=inner)
+
     send_email(
         to=to,
         subject=f"{subj_prefix}[{org_name}] {rt_label} #{request_id} — {subject}",
         body="\n".join(body_lines),
+        html_body=html,
         from_addr=from_addr,
         from_name=from_name,
         smtp=smtp,
