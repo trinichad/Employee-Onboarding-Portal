@@ -7,11 +7,35 @@ endpoint.
 from __future__ import annotations
 
 import io
+from datetime import datetime, timezone
 from typing import Iterable, Optional
 
 from sqlalchemy.orm import Session
 
 from app.models import EmployeeRequest, Organization, PlatformSetting, User
+
+
+def _format_local(dt: datetime, tz_name: str) -> str:
+    """Format a tz-aware UTC datetime in the platform's local time zone using
+    a 12-hour clock, e.g. "June 1, 2026 \u00b7 3:14 PM EDT".
+
+    Falls back to UTC if the configured zone is invalid.
+    """
+    if dt is None:
+        return ""
+    # SQLite drops tzinfo; treat naive values as UTC.
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    try:
+        from zoneinfo import ZoneInfo
+        local = dt.astimezone(ZoneInfo(tz_name)) if tz_name else dt.astimezone(timezone.utc)
+    except Exception:
+        local = dt.astimezone(timezone.utc)
+    # %-I is non-portable; build the hour manually for cross-platform safety.
+    hour12 = local.hour % 12 or 12
+    ampm = "AM" if local.hour < 12 else "PM"
+    tz_abbr = local.strftime("%Z") or (tz_name or "UTC")
+    return f"{local.strftime('%B %d, %Y')} \u00b7 {hour12}:{local.strftime('%M')} {ampm} {tz_abbr}"
 
 
 def build_request_pdf(
@@ -31,8 +55,19 @@ def build_request_pdf(
         BaseDocTemplate, Frame, PageTemplate, Paragraph, Spacer, Table, TableStyle,
     )
     from app.services import branding as branding_svc
+    from app.services.runtime import platform_timezone
 
     summary = list(summary_lines) or ["(no fields filled in)"]
+    tz_name = platform_timezone(db)
+
+    def _local_date(dt: datetime) -> datetime:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        try:
+            from zoneinfo import ZoneInfo
+            return dt.astimezone(ZoneInfo(tz_name)) if tz_name else dt.astimezone(timezone.utc)
+        except Exception:
+            return dt.astimezone(timezone.utc)
 
     buf = io.BytesIO()
     page_w, page_h = LETTER
@@ -81,7 +116,7 @@ def build_request_pdf(
         canvas.drawRightString(page_w - margin, page_h - margin - 8, f"Request #{row.id}")
         canvas.setFont("Helvetica", 9)
         canvas.setFillColor(colors.HexColor("#64748b"))
-        canvas.drawRightString(page_w - margin, page_h - margin - 22, row.created_at.strftime("%B %d, %Y"))
+        canvas.drawRightString(page_w - margin, page_h - margin - 22, _local_date(row.created_at).strftime("%B %d, %Y"))
         canvas.setStrokeColor(colors.HexColor("#cbd5e1"))
         canvas.setLineWidth(0.75)
         canvas.line(margin, page_h - margin - 32, page_w - margin, page_h - margin - 32)
@@ -102,7 +137,7 @@ def build_request_pdf(
         ["Request type", row.request_type or ""],
         ["Subject", row.subject or ""],
         ["Status", (row.status.value if hasattr(row.status, "value") else str(row.status)).replace("_", " ").title()],
-        ["Submitted", row.created_at.strftime("%B %d, %Y \u00b7 %H:%M UTC")],
+        ["Submitted", _format_local(row.created_at, tz_name)],
         ["Submitted by", submitter_label],
     ]
     mt = Table(meta_rows, colWidths=[1.5 * inch, page_w - 2 * margin - 1.5 * inch])

@@ -22,3 +22,14 @@ def public_base_url(db: Session) -> str:
     if not value:
         value = settings.PUBLIC_BASE_URL or ""
     return value.rstrip("/")
+
+
+def platform_timezone(db: Session) -> str:
+    """Return the configured IANA timezone name (e.g. 'America/New_York').
+
+    Falls back to 'UTC' when no value is set.
+    """
+    row = db.get(PlatformSetting, 1)
+    if row and (getattr(row, "timezone", None) or "").strip():
+        return row.timezone.strip()
+    return "UTC"
