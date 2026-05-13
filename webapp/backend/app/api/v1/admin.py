@@ -672,6 +672,32 @@ def get_request_detail(request_id: int, db: Session = Depends(get_db)) -> dict:
     }
 
 
+@router.get("/requests/{request_id}/export")
+def export_admin_request_pdf(request_id: int, db: Session = Depends(get_db)):
+    """Global-admin PDF export for any organization's request."""
+    import io
+    from fastapi.responses import StreamingResponse
+    from app.api.v1.requests import _active_schema, _resources_by_id, _summary_lines
+    from app.services.request_pdf import build_request_pdf, pdf_filename_for
+
+    row = db.get(EmployeeRequest, request_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    org = db.get(Organization, row.organization_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    submitter = db.get(User, row.submitter_id) if row.submitter_id else None
+    schema = _active_schema(db, org.id)
+    resources = _resources_by_id(db, org.id)
+    summary = _summary_lines(row.payload or {}, schema, resources) or ["(no fields filled in)"]
+    pdf = build_request_pdf(db, org, row, summary, submitter)
+    return StreamingResponse(
+        io.BytesIO(pdf),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{pdf_filename_for(row)}"'},
+    )
+
+
 @router.get("/audit", response_model=List[AuditOut])
 def list_audit(
     response: Response,

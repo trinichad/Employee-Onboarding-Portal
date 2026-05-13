@@ -115,6 +115,7 @@ export const adminApi = {
       submitter: { id: number; full_name: string; email: string } | null;
       schema: any;
     }>(`/admin/requests/${id}`).then(r => r.data),
+  exportRequestUrl: (id: number) => `/api/v1/admin/requests/${id}/export`,
   audit: (params?: { organization_id?: number; limit?: number; offset?: number; search?: string }) =>
     api.get<AuditEntry[]>("/admin/audit", { params }).then(r => ({
       items: r.data,

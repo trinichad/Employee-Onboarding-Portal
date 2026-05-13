@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import smtplib
 import urllib.error
@@ -7,9 +8,13 @@ import urllib.request
 from dataclasses import dataclass
 from email.message import EmailMessage
 from email.utils import formataddr, parseaddr
-from typing import Optional, Tuple
+from typing import Optional, Sequence, Tuple
 
 from app.core.config import settings
+
+# An attachment is a tuple (filename, mimetype, content_bytes). e.g.
+# ("request-42.pdf", "application/pdf", b"...")
+EmailAttachment = Tuple[str, str, bytes]
 
 
 @dataclass
@@ -98,6 +103,7 @@ def _send_via_smtp2go_api(
     subject: str,
     body: str,
     sender: str,
+    attachments: Optional[Sequence[EmailAttachment]] = None,
 ) -> None:
     """Send a single message via SMTP2GO's HTTP API.
 
@@ -113,6 +119,15 @@ def _send_via_smtp2go_api(
         "subject": subject,
         "text_body": body,
     }
+    if attachments:
+        payload["attachments"] = [
+            {
+                "filename": filename,
+                "fileblob": base64.b64encode(content).decode("ascii"),
+                "mimetype": mimetype or "application/octet-stream",
+            }
+            for (filename, mimetype, content) in attachments
+        ]
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         SMTP2GO_API_URL,
@@ -193,6 +208,7 @@ def send_email(
     from_name: Optional[str] = None,
     smtp: Optional[SmtpConfig] = None,
     raise_on_error: bool = False,
+    attachments: Optional[Sequence[EmailAttachment]] = None,
 ) -> None:
     """Send via SMTP if configured; otherwise print to stdout (dev mode).
 
@@ -202,9 +218,13 @@ def send_email(
     """
     cfg = smtp or resolve_default_smtp()
     sender = _format_from(from_addr, from_name)
+    attach_summary = (
+        " [+" + ", ".join(f"{n} ({len(c)} bytes)" for (n, _m, c) in attachments) + "]"
+        if attachments else ""
+    )
     if not cfg.usable:
         print(
-            f"\n--- DEV EMAIL ---\nFrom: {sender}\nTo: {to}\nSubject: {subject}\n\n{body}\n-----------------\n",
+            f"\n--- DEV EMAIL ---\nFrom: {sender}\nTo: {to}\nSubject: {subject}{attach_summary}\n\n{body}\n-----------------\n",
             flush=True,
         )
         return
@@ -213,7 +233,10 @@ def send_email(
         # SMTP2GO requires a bare email in `sender`, not "Name <addr>".
         bare_sender = parseaddr(sender)[1] or sender
         try:
-            _send_via_smtp2go_api(cfg, to=to, subject=subject, body=body, sender=bare_sender)
+            _send_via_smtp2go_api(
+                cfg, to=to, subject=subject, body=body, sender=bare_sender,
+                attachments=attachments,
+            )
         except Exception as exc:
             print(f"[email] http_api failed: {exc}", flush=True)
             if raise_on_error:
@@ -224,6 +247,9 @@ def send_email(
     msg["To"] = to
     msg["Subject"] = subject
     msg.set_content(body)
+    for filename, mimetype, content in attachments or ():
+        maintype, _, subtype = (mimetype or "application/octet-stream").partition("/")
+        msg.add_attachment(content, maintype=maintype or "application", subtype=subtype or "octet-stream", filename=filename)
     try:
         with _open_smtp(cfg) as s:
             _do_auth(s, cfg)
@@ -339,7 +365,8 @@ def support_submission_email(to: str, org_name: str, request_id: int, subject: s
                              submitter: str, payload_text: str, message: Optional[str],
                              from_addr: Optional[str] = None, from_name: Optional[str] = None,
                              smtp: Optional[SmtpConfig] = None,
-                             *, is_resubmission: bool = False, revision: int = 1) -> None:
+                             *, is_resubmission: bool = False, revision: int = 1,
+                             attachments: Optional[Sequence[EmailAttachment]] = None) -> None:
     if is_resubmission:
         intro = (
             f"UPDATED employee setup request from {org_name}. "
@@ -380,4 +407,5 @@ def support_submission_email(to: str, org_name: str, request_id: int, subject: s
         from_addr=from_addr,
         from_name=from_name,
         smtp=smtp,
+        attachments=attachments,
     )
