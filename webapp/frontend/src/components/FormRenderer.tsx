@@ -626,14 +626,16 @@ function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, so
   const visibleExtras = value.extras.map((ex, idx) => ({ ex, idx, r: allResources.find((x) => x.id === ex.resource_id) }))
     .filter(({ r }) => passes(r));
 
-  // `keep_picker` turns this group into a "picker-only" group: the default
-  // block (driven by the primary source resource) is always suppressed, so
-  // it doesn't duplicate another group that already covers the primary
-  // resource. The user adds eligible resources through the picker only.
+  // `keep_picker` turns this group into a "picker-only" group used to
+  // cover resources that the primary visibility rule excludes. It only
+  // appears when the primary source resource FAILS the rule — otherwise
+  // the regular (non-picker-only) sibling group already covers them and
+  // showing this picker too would be a duplicate.
   const keepPicker = !!group.visible_when?.keep_picker;
   const showDefault = defaultVisible && !keepPicker;
+  const pickerActive = keepPicker ? !defaultVisible : (showDefault || visibleExtras.length > 0);
   const showPicker = !!dyn.allow_additional && !disabled
-    && (showDefault || visibleExtras.length > 0 || keepPicker)
+    && pickerActive
     && visiblePickerOptions.length > 0;
 
   if (!showDefault && visibleExtras.length === 0 && !showPicker) {
