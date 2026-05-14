@@ -570,23 +570,21 @@ function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, so
     onRemove?: () => void,
     badge?: string,
   ) => {
-    const titleText = substitutePlaceholder(group.title, placeholder, contextName);
-    // If the admin didn't put the placeholder token in the title, the
-    // resource name has nowhere to surface from the substitution alone —
-    // show it explicitly as a subtitle so the user can tell which resource
-    // this card represents.
     const placeholderInTitle = group.title
       ? group.title.toLowerCase().includes(placeholder.toLowerCase())
       : false;
-    const subtitle = contextName && !placeholderInTitle ? contextName : undefined;
+    // When the admin didn't bake the placeholder into the title, the outer
+    // group header already shows the group title — repeating it on every
+    // per-resource card just clutters the UI. Use the resource name as the
+    // card heading instead so each card is identified by its resource.
+    const titleText = placeholderInTitle
+      ? substitutePlaceholder(group.title, placeholder, contextName)
+      : (contextName || group.title);
     return (
       <div key={contextKey} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/40 dark:bg-slate-900/40 p-3 space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
             <h4 className="font-medium text-slate-800 dark:text-slate-100 truncate">{titleText}</h4>
-            {subtitle && (
-              <span className="text-sm text-slate-600 dark:text-slate-300 truncate">— {subtitle}</span>
-            )}
             {badge && <span className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{badge}</span>}
           </div>
           {onRemove && (
