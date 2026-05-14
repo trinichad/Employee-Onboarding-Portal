@@ -571,11 +571,22 @@ function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, so
     badge?: string,
   ) => {
     const titleText = substitutePlaceholder(group.title, placeholder, contextName);
+    // If the admin didn't put the placeholder token in the title, the
+    // resource name has nowhere to surface from the substitution alone —
+    // show it explicitly as a subtitle so the user can tell which resource
+    // this card represents.
+    const placeholderInTitle = group.title
+      ? group.title.toLowerCase().includes(placeholder.toLowerCase())
+      : false;
+    const subtitle = contextName && !placeholderInTitle ? contextName : undefined;
     return (
       <div key={contextKey} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/40 dark:bg-slate-900/40 p-3 space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-baseline gap-2 min-w-0">
+          <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
             <h4 className="font-medium text-slate-800 dark:text-slate-100 truncate">{titleText}</h4>
+            {subtitle && (
+              <span className="text-sm text-slate-600 dark:text-slate-300 truncate">— {subtitle}</span>
+            )}
             {badge && <span className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{badge}</span>}
           </div>
           {onRemove && (
@@ -584,7 +595,7 @@ function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, so
             </button>
           )}
         </div>
-        {!contextName && contextKey === "default" && (
+        {!contextName && contextKey === "default" && sourceFieldLabel && (
           <p className="text-xs text-amber-700 dark:text-amber-300">
             Pick a {sourceFieldLabel.toLowerCase()} above to fill in {placeholder}.
           </p>
@@ -632,8 +643,11 @@ function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, so
   // the regular (non-picker-only) sibling group already covers them and
   // showing this picker too would be a duplicate.
   const keepPicker = !!group.visible_when?.keep_picker;
-  const showDefault = defaultVisible && !keepPicker;
-  const pickerActive = keepPicker ? !defaultVisible : (showDefault || visibleExtras.length > 0);
+  // Kind-only dynamic groups (no source_field_id) have no "default" context
+  // — the user just picks resources via the picker.
+  const hasSourceField = !!dyn.source_field_id;
+  const showDefault = hasSourceField && defaultVisible && !keepPicker;
+  const pickerActive = keepPicker ? !defaultVisible : (showDefault || visibleExtras.length > 0 || !hasSourceField);
   const showPicker = !!dyn.allow_additional && !disabled
     && pickerActive
     && visiblePickerOptions.length > 0;
