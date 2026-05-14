@@ -180,7 +180,7 @@ export default function OrgFormBuilder() {
           </div></div>
 
           <FieldsEditor doc={doc} setDoc={setDoc} kindLabels={kindLabels} kindAttrs={kindAttrs} />
-          <GroupsEditor doc={doc} setDoc={setDoc} />
+          <GroupsEditor doc={doc} setDoc={setDoc} kindLabels={kindLabels} />
         </div>
       )}
 
@@ -498,7 +498,7 @@ function FieldEditor({ field, allFields, requestTypes, kindLabels, kindAttrs, on
   );
 }
 
-function GroupsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSchemaDoc) => void }) {
+function GroupsEditor({ doc, setDoc, kindLabels }: { doc: FormSchemaDoc; setDoc: (d: FormSchemaDoc) => void; kindLabels: Record<string, string> }) {
   const groups = doc.groups || [];
   const resourceFields = (doc.fields || []).filter((f) => f.type === "resource");
   const setGroup = (i: number, patch: any) => {
@@ -548,6 +548,7 @@ function GroupsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSch
             <DynamicGroupConfig
               group={g}
               resourceFields={resourceFields}
+              kindLabels={kindLabels}
               onChange={(patch) => setGroup(i, patch)}
             />
 
@@ -629,13 +630,15 @@ function GroupsEditor({ doc, setDoc }: { doc: FormSchemaDoc; setDoc: (d: FormSch
   );
 }
 
-function DynamicGroupConfig({ group, resourceFields, onChange }: {
+function DynamicGroupConfig({ group, resourceFields, kindLabels, onChange }: {
   group: FormGroup;
   resourceFields: FormField[];
+  kindLabels: Record<string, string>;
   onChange: (patch: Partial<FormGroup>) => void;
 }) {
   const dyn = group.dynamic;
   const enabled = !!dyn;
+  const kindEntries = Object.entries(kindLabels);
   return (
     <div className="rounded-md bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900 p-3 space-y-2">
       <label className="flex items-center gap-2 text-sm font-medium text-blue-900 dark:text-blue-200">
@@ -644,9 +647,11 @@ function DynamicGroupConfig({ group, resourceFields, onChange }: {
           checked={enabled}
           onChange={(e) => {
             if (e.target.checked) {
+              const firstField = resourceFields[0];
               onChange({
                 dynamic: {
-                  source_field_id: resourceFields[0]?.id || "",
+                  source_field_id: firstField?.id || "",
+                  resource_kind: firstField ? undefined : (kindEntries[0]?.[0] || undefined),
                   placeholder: "{Property}",
                   allow_additional: true,
                 },
@@ -668,17 +673,50 @@ function DynamicGroupConfig({ group, resourceFields, onChange }: {
             <select
               className="input"
               value={dyn.source_field_id || ""}
-              onChange={(e) => onChange({ dynamic: { ...dyn, source_field_id: e.target.value } })}
+              onChange={(e) => {
+                const sid = e.target.value;
+                const sf = resourceFields.find((rf) => rf.id === sid);
+                // When a resource field drives the group, its kind takes
+                // precedence; clear the standalone kind override so the
+                // renderer follows the field.
+                onChange({
+                  dynamic: {
+                    ...dyn,
+                    source_field_id: sid,
+                    resource_kind: sid ? undefined : (dyn.resource_kind || sf?.resource_kind),
+                  },
+                });
+              }}
             >
-              <option value="">— pick a resource field —</option>
+              <option value="">
+                {resourceFields.length === 0
+                  ? "— none (use Resource category below) —"
+                  : "— none (use Resource category below) —"}
+              </option>
               {resourceFields.map((rf) => (
-                <option key={rf.id} value={rf.id}>{rf.label || rf.id}{rf.resource_kind ? ` (${rf.resource_kind})` : ""}</option>
+                <option key={rf.id} value={rf.id}>{rf.label || rf.id}{rf.resource_kind ? ` (${kindLabels[rf.resource_kind] || rf.resource_kind})` : ""}</option>
               ))}
             </select>
-            {resourceFields.length === 0 && (
-              <p className="help text-amber-700 dark:text-amber-300">Add a resource field first (e.g. "Property") so this group has something to follow.</p>
-            )}
+            <p className="help">
+              Pick a resource field on this form to use its selected resource as the default. Or leave it as "none" and choose a Resource category — users will pick resources directly via the "+ Add another" button.
+            </p>
           </div>
+          {!dyn.source_field_id && (
+            <div>
+              <label className="label text-xs">Resource category</label>
+              <select
+                className="input"
+                value={dyn.resource_kind || ""}
+                onChange={(e) => onChange({ dynamic: { ...dyn, resource_kind: e.target.value || undefined } })}
+              >
+                <option value="">— choose a category —</option>
+                {kindEntries.map(([v, l]) => (
+                  <option key={v} value={v}>{l}</option>
+                ))}
+              </select>
+              <p className="help">The catalog this group pulls resources from. Manage categories under <strong>Resources</strong>.</p>
+            </div>
+          )}
           <div>
             <label className="label text-xs">Placeholder token</label>
             <input
