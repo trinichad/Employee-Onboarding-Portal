@@ -185,7 +185,7 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
     && schema.prior_access_request_types.includes(rt);
 
   function buildPriorSnapshot(payload: Record<string, any>): PriorSnapshot {
-    const snap: PriorSnapshot = { fields: {}, groups: {} };
+    const snap: PriorSnapshot = { fields: {}, groups: {}, group_sources: {} };
     for (const f of fields) {
       if (!f.prior_access_tracked) continue;
       const v = payload[f.id];
@@ -196,6 +196,14 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
     for (const g of schema.groups || []) {
       if (!g.prior_access_tracked || !g.enabled) continue;
       const raw = gpayload[g.id];
+      // For dynamic groups, remember the source-field's value at snapshot
+      // time so we can migrate "default" → "extra:<priorId>" when the user
+      // later picks a different source resource.
+      if (g.dynamic && g.dynamic.source_field_id) {
+        const src = payload[g.dynamic.source_field_id];
+        const n = src === undefined || src === null || src === "" ? NaN : Number(src);
+        snap.group_sources![g.id] = Number.isFinite(n) ? n : null;
+      }
       if (!raw) continue;
       const ctxs: Record<string, Record<string, true>> = {};
       if (g.dynamic) {
@@ -288,6 +296,103 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
     setFieldAction,
     setGroupItemAction,
   };
+
+  // ----- Migrate prior "default" context to "extra:<priorId>" when the user
+  // changes the source field of a prior-tracked dynamic group.
+  //
+  // Why: a dynamic group's "default" context always reflects whatever
+  // resource is currently selected in the source field. If we leave the
+  // prior items in "default" after the submitter picks a new property,
+  // the renderer will rebrand those items with the NEW property's name
+  // and still display REMOVE pills on them — which is wrong.  Instead,
+  // we move the prior selections + snapshot + actions onto an "extra"
+  // block tied to the PRIOR property's resource id, so the old property
+  // re-appears as its own card (with correct names and REMOVE pills) and
+  // the new property's default block starts clean.
+  useEffect(() => {
+    if (!isPriorAccessMode || !priorSnap || !priorSnap.group_sources) return;
+    const sources = priorSnap.group_sources;
+    let nextValues: Record<string, any> | null = null;
+    let nextSnap: PriorSnapshot | null = null;
+    let nextActions: PriorActions | null = null;
+    let snapSourcesTouched = false;
+
+    for (const g of schema.groups || []) {
+      if (!g.dynamic || !g.prior_access_tracked) continue;
+      if (!(g.id in sources)) continue;
+      const priorSrcId = sources[g.id];
+      const srcFid = g.dynamic.source_field_id;
+      const curRaw = srcFid ? values[srcFid] : undefined;
+      const curN = curRaw === undefined || curRaw === null || curRaw === "" ? NaN : Number(curRaw);
+      const curId = Number.isFinite(curN) ? curN : null;
+      if (curId === priorSrcId) continue; // source unchanged — nothing to migrate
+
+      // Pull current selections + snapshot + actions for this group.
+      const dv = normalizeDynamicGroupValue((values._groups || {})[g.id]);
+      const defaultSel = dv.default || {};
+      const priorDefault = priorSnap.groups[g.id]?.["default"] || {};
+      const priorDefaultActs = priorActions.groups?.[g.id]?.["default"] || {};
+
+      const hasSelections = Object.values(defaultSel).some(Boolean);
+      const hasPrior = Object.keys(priorDefault).length > 0
+        || Object.keys(priorDefaultActs).length > 0;
+
+      // Always advance group_sources so this effect doesn't loop.
+      nextSnap = nextSnap || {
+        ...priorSnap,
+        groups: { ...priorSnap.groups },
+        group_sources: { ...priorSnap.group_sources },
+      };
+      delete nextSnap.group_sources![g.id];
+      snapSourcesTouched = true;
+
+      if (!hasSelections && !hasPrior) continue;
+      if (priorSrcId === null || !Number.isFinite(priorSrcId)) continue;
+
+      // ---- Migrate selections (_groups[gid]) ----
+      const newExtras = dv.extras.slice();
+      const exIdx = newExtras.findIndex((e) => e.resource_id === priorSrcId);
+      if (exIdx >= 0) {
+        newExtras[exIdx] = {
+          ...newExtras[exIdx],
+          items: { ...newExtras[exIdx].items, ...defaultSel },
+        };
+      } else {
+        newExtras.push({ resource_id: priorSrcId as number, items: { ...defaultSel } });
+      }
+      const newDv: DynamicGroupValue = { default: {}, extras: newExtras };
+      nextValues = nextValues || { ...values, _groups: { ...(values._groups || {}) } };
+      nextValues._groups = { ...nextValues._groups, [g.id]: newDv };
+
+      // ---- Migrate snapshot[gid]: default -> extra:<priorSrcId> ----
+      const priorExtraKey = `extra:${priorSrcId}`;
+      const gSnap = { ...(nextSnap.groups[g.id] || {}) };
+      const mergedSnap = { ...(gSnap[priorExtraKey] || {}), ...priorDefault };
+      delete gSnap["default"];
+      if (Object.keys(mergedSnap).length) gSnap[priorExtraKey] = mergedSnap;
+      nextSnap.groups[g.id] = gSnap;
+
+      // ---- Migrate actions[gid] similarly ----
+      nextActions = nextActions || {
+        fields: { ...(priorActions.fields || {}) },
+        groups: { ...(priorActions.groups || {}) },
+      };
+      const gAct = { ...(nextActions.groups[g.id] || {}) };
+      const priorDefAct = gAct["default"] || {};
+      const mergedAct = { ...(gAct[priorExtraKey] || {}), ...priorDefAct };
+      delete gAct["default"];
+      if (Object.keys(mergedAct).length) gAct[priorExtraKey] = mergedAct;
+      nextActions.groups[g.id] = gAct;
+    }
+
+    if (nextValues || nextSnap || nextActions || snapSourcesTouched) {
+      const out: Record<string, any> = nextValues || { ...values };
+      if (nextSnap) out._prior_snapshot = nextSnap;
+      if (nextActions) out._prior_actions = nextActions;
+      onChange(out);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values, schema.groups, isPriorAccessMode]);
 
   return (
     <div className="space-y-6">
@@ -901,6 +1006,12 @@ export interface PriorSnapshot {
    *  for static groups and the dynamic-default block, or "extra:<resource_id>"
    *  for dynamic extras. */
   groups: Record<string, Record<string, Record<string, true>>>;
+  /** For dynamic prior-tracked groups: the source-field's resource id from
+   *  the prior payload. Used to auto-migrate the "default" context into
+   *  "extra:<id>" when the submitter later picks a different source
+   *  resource (e.g. transfers an employee to a different property). The
+   *  per-group key is removed once migration runs so it does not re-fire. */
+  group_sources?: Record<string, number | null>;
 }
 
 export interface PriorActions {
