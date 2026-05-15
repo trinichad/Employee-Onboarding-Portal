@@ -81,6 +81,89 @@ def _is_termination(request_type: str) -> bool:
     return any(h in rt for h in TERMINATION_TYPE_HINTS)
 
 
+def _effective_payload(payload: dict) -> dict:
+    """Return a copy of `payload` with items the submitter marked
+    `[REMOVE PREVIOUS ACCESS]` / `[REMOVE]` actually pruned from the form
+    state, and the transient `_prior_*` metadata stripped.
+
+    The on-form payload keeps removed items checked (so reviewers see what
+    used to be granted next to the REMOVE pill in the summary/PDF). But the
+    Employee.last_payload row represents the employee's *effective* access
+    going forward — the next change request's "previous access" snapshot
+    must not re-surface items that were already revoked. This pruning is
+    what makes the prior-access workflow idempotent across requests.
+    """
+    import copy
+
+    if not isinstance(payload, dict) or not payload:
+        return payload or {}
+    acts = payload.get("_prior_actions") or {}
+    act_fields: dict = acts.get("fields") or {}
+    act_groups: dict = acts.get("groups") or {}
+    out = copy.deepcopy(payload)
+
+    # Drop tracked fields the submitter chose to remove.
+    for fid, action in act_fields.items():
+        if action == "remove":
+            out.pop(fid, None)
+
+    # Drop tracked group items the submitter chose to remove. Group payload
+    # may be either the plain {itemId: bool} shape (static groups) or the
+    # {default: {…}, extras: [{resource_id, items}]} shape (dynamic groups).
+    groups_val = out.get("_groups")
+    if isinstance(groups_val, dict):
+        for gid, ctxs in act_groups.items():
+            if not isinstance(ctxs, dict):
+                continue
+            raw = groups_val.get(gid)
+            if not isinstance(raw, dict):
+                continue
+            is_dynamic = "default" in raw or "extras" in raw
+            for ctx_key, items in ctxs.items():
+                if not isinstance(items, dict):
+                    continue
+                remove_ids = [iid for iid, a in items.items() if a == "remove"]
+                if not remove_ids:
+                    continue
+                if not is_dynamic:
+                    # Static group: ctx_key is always "default".
+                    for iid in remove_ids:
+                        raw.pop(iid, None)
+                    continue
+                if ctx_key == "default":
+                    default_sel = raw.get("default") or {}
+                    for iid in remove_ids:
+                        default_sel.pop(iid, None)
+                    raw["default"] = default_sel
+                elif ctx_key.startswith("extra:"):
+                    try:
+                        rid = int(ctx_key.split(":", 1)[1])
+                    except ValueError:
+                        continue
+                    extras = raw.get("extras") or []
+                    new_extras = []
+                    for ex in extras:
+                        if not isinstance(ex, dict):
+                            new_extras.append(ex)
+                            continue
+                        if ex.get("resource_id") == rid:
+                            ex_items = dict(ex.get("items") or {})
+                            for iid in remove_ids:
+                                ex_items.pop(iid, None)
+                            if ex_items:
+                                new_extras.append({**ex, "items": ex_items})
+                            # else: drop the now-empty extras card entirely
+                        else:
+                            new_extras.append(ex)
+                    raw["extras"] = new_extras
+
+    # Strip the prior-* metadata so the next request rebuilds a fresh
+    # snapshot from the pruned effective payload.
+    out.pop("_prior_snapshot", None)
+    out.pop("_prior_actions", None)
+    return out
+
+
 def upsert_from_request(db: Session, org: Organization, req: EmployeeRequest, schema: dict | None) -> None:
     """Upsert the org's Employee row for `req` using its payload.
 
@@ -137,6 +220,6 @@ def upsert_from_request(db: Session, org: Organization, req: EmployeeRequest, sc
         row.email = email
     row.last_request_id = req.id
     row.last_request_type = req.request_type or ""
-    row.last_payload = payload
+    row.last_payload = _effective_payload(payload)
     row.last_submitted_at = req.submitted_at or datetime.now(timezone.utc)
     row.status = EmployeeStatus.TERMINATED.value if _is_termination(req.request_type) else EmployeeStatus.ACTIVE.value
