@@ -179,12 +179,9 @@ def build_request_pdf(
             story.append(Paragraph(para.replace("\n", "<br/>"), body))
             story.append(Spacer(1, 4))
 
-    if row.notes:
-        story.append(Spacer(1, 14))
-        story.append(Paragraph("Internal notes", h2))
-        for para in str(row.notes).split("\n\n"):
-            story.append(Paragraph(para.replace("\n", "<br/>"), body))
-            story.append(Spacer(1, 4))
+    # Internal notes are intentionally NOT rendered in the PDF: the PDF is
+    # shared with support recipients and the submitter, while notes are an
+    # in-app reviewer-only field.
 
     doc.build(story)
     pdf = buf.getvalue()

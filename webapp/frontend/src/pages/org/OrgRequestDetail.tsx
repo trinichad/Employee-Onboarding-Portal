@@ -95,21 +95,20 @@ export default function OrgRequestDetail() {
     URL.revokeObjectURL(a.href);
   };
 
-  const promptDownloadPdf = () => {
-    if (window.confirm("Request sent to support. Download a PDF copy for your records?")) {
-      exportPdf();
-    }
-  };
+  // Note: we used to prompt for a PDF download right after Send/Resend; the
+  // submitter already gets the PDF as an email attachment and can re-export
+  // it any time via the "Export PDF" button, so the confirm() prompt was
+  // redundant friction.
 
   const submit = useMutation({
     mutationFn: () => orgApi.submitRequest(orgSlug, rid),
-    onSuccess: () => { toast.success("Sent to support"); invalidate(); promptDownloadPdf(); },
+    onSuccess: () => { toast.success("Sent to support"); invalidate(); },
     onError: (e) => toast.error(apiError(e)),
   });
 
   const resubmit = useMutation({
     mutationFn: () => orgApi.resubmitRequest(orgSlug, rid),
-    onSuccess: () => { toast.success("Updated version sent to support"); invalidate(); promptDownloadPdf(); },
+    onSuccess: () => { toast.success("Updated version sent to support"); invalidate(); },
     onError: (e) => toast.error(apiError(e)),
   });
 

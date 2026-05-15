@@ -31,6 +31,25 @@ export function RequestSummary({ schema, values, notes, supportMessage, resource
   const resourceById = new Map<number, OrgResource>();
   for (const r of resources || []) resourceById.set(r.id, r);
 
+  // Prior-access review annotations: tag each tracked field/group-item line
+  // with [REMOVE PREVIOUS ACCESS] / [keep previous] so reviewers see Keep
+  // vs Remove decisions in the on-page summary (matches PDF behaviour).
+  const priorSnap = (values as any)._prior_snapshot || {};
+  const priorActs = (values as any)._prior_actions || {};
+  const snapFields: Record<string, any> = priorSnap.fields || {};
+  const snapGroups: Record<string, Record<string, Record<string, true>>> = priorSnap.groups || {};
+  const actFields: Record<string, string> = priorActs.fields || {};
+  const actGroups: Record<string, Record<string, Record<string, string>>> = priorActs.groups || {};
+  const fieldTag = (fid: string): string => {
+    if (!Object.prototype.hasOwnProperty.call(snapFields, fid)) return "";
+    return (actFields[fid] || "keep") === "remove" ? "  [REMOVE PREVIOUS ACCESS]" : "  [keep previous]";
+  };
+  const itemTag = (gid: string, ctxKey: string, itemId: string): string => {
+    if (!snapGroups[gid]?.[ctxKey]?.[itemId]) return "";
+    const a = actGroups[gid]?.[ctxKey]?.[itemId] || "keep";
+    return a === "remove" ? " [REMOVE]" : " [keep prior]";
+  };
+
   if (values.request_type) {
     rows.push({ label: "Request Type", value: String(values.request_type) });
   }
@@ -47,7 +66,7 @@ export function RequestSummary({ schema, values, notes, supportMessage, resource
     } else {
       value = String(v);
     }
-    rows.push({ label: f.label, value });
+    rows.push({ label: f.label, value: `${value}${fieldTag(f.id)}` });
   }
 
   for (const g of schema.groups || []) {
@@ -66,14 +85,16 @@ export function RequestSummary({ schema, values, notes, supportMessage, resource
       } else if (typeof sourceVal === "string" && sourceVal.trim() !== "") {
         defaultName = sourceVal;
       }
-      const renderItems = (sel: Record<string, boolean>, name: string | undefined) =>
-        g.items.filter((it) => sel[it.id]).map((it) => substitutePlaceholder(it.label, placeholder, name));
+      const renderItems = (sel: Record<string, boolean>, name: string | undefined, ctxKey: string) =>
+        g.items
+          .filter((it) => sel[it.id])
+          .map((it) => `${substitutePlaceholder(it.label, placeholder, name)}${itemTag(g.id, ctxKey, it.id)}`);
       const titleFor = (name: string | undefined) => substitutePlaceholder(g.title, placeholder, name);
-      const defaultItems = renderItems(dv.default, defaultName);
+      const defaultItems = renderItems(dv.default, defaultName, "default");
       if (defaultItems.length) rows.push({ label: titleFor(defaultName), value: defaultItems.join(", ") });
       for (const ex of dv.extras) {
         const extraName = resourceById.get(ex.resource_id)?.name;
-        const items = renderItems(ex.items, extraName);
+        const items = renderItems(ex.items, extraName, `extra:${ex.resource_id}`);
         if (items.length) {
           const label = extraName ? titleFor(extraName) : `${titleFor(undefined)} (resource #${ex.resource_id})`;
           rows.push({ label, value: items.join(", ") });
@@ -83,7 +104,7 @@ export function RequestSummary({ schema, values, notes, supportMessage, resource
     }
     const checked = (g.items || [])
       .filter((it) => !!values._groups?.[g.id]?.[it.id])
-      .map((it) => it.label);
+      .map((it) => `${it.label}${itemTag(g.id, "default", it.id)}`);
     if (checked.length > 0) rows.push({ label: g.title, value: checked.join(", ") });
   }
 
