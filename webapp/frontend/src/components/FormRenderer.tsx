@@ -175,12 +175,119 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
     onChange({ ...values, _groups: groups });
   }
 
+  // ----- Prior-access review --------------------------------------------------
+  // When the current request type is in `schema.prior_access_request_types`,
+  // capture a snapshot of the prior submission's tracked fields/group items
+  // on employee lookup. The renderer then surfaces Keep / Remove pills next
+  // to each tracked value so reviewers see exactly which previously-granted
+  // access to revoke vs retain.
+  const isPriorAccessMode = !!rt && Array.isArray(schema.prior_access_request_types)
+    && schema.prior_access_request_types.includes(rt);
+
+  function buildPriorSnapshot(payload: Record<string, any>): PriorSnapshot {
+    const snap: PriorSnapshot = { fields: {}, groups: {} };
+    for (const f of fields) {
+      if (!f.prior_access_tracked) continue;
+      const v = payload[f.id];
+      if (v === undefined || v === null || v === "") continue;
+      snap.fields[f.id] = v;
+    }
+    const gpayload = payload._groups || {};
+    for (const g of schema.groups || []) {
+      if (!g.prior_access_tracked || !g.enabled) continue;
+      const raw = gpayload[g.id];
+      if (!raw) continue;
+      const ctxs: Record<string, Record<string, true>> = {};
+      if (g.dynamic) {
+        const dv = normalizeDynamicGroupValue(raw);
+        const def: Record<string, true> = {};
+        for (const it of g.items) {
+          if (dv.default[it.id]) def[it.id] = true;
+        }
+        if (Object.keys(def).length) ctxs["default"] = def;
+        for (const ex of dv.extras) {
+          const items: Record<string, true> = {};
+          for (const it of g.items) {
+            if (ex.items[it.id]) items[it.id] = true;
+          }
+          if (Object.keys(items).length) ctxs[`extra:${ex.resource_id}`] = items;
+        }
+      } else {
+        const sel = raw as Record<string, boolean>;
+        const def: Record<string, true> = {};
+        for (const it of g.items) {
+          if (sel[it.id]) def[it.id] = true;
+        }
+        if (Object.keys(def).length) ctxs["default"] = def;
+      }
+      if (Object.keys(ctxs).length) snap.groups[g.id] = ctxs;
+    }
+    return snap;
+  }
+
   function applyEmployee(emp: Employee) {
     const payload = { ...(emp.last_payload || {}) };
     payload.request_type = values.request_type;
     payload._employee_id = emp.id;
+    if (isPriorAccessMode) {
+      const snap = buildPriorSnapshot(payload);
+      const hasAny = Object.keys(snap.fields).length > 0 || Object.keys(snap.groups).length > 0;
+      if (hasAny) {
+        payload._prior_snapshot = snap;
+        // Default every tracked item to "keep". The user can flip per-item
+        // or use the banner buttons to bulk-set.
+        payload._prior_actions = defaultActionsFromSnapshot(snap, "keep");
+      } else {
+        delete payload._prior_snapshot;
+        delete payload._prior_actions;
+      }
+    } else {
+      delete payload._prior_snapshot;
+      delete payload._prior_actions;
+    }
     onChange(payload);
   }
+
+  // Helpers for reading / mutating _prior_actions.
+  const priorSnap: PriorSnapshot | undefined = values._prior_snapshot;
+  const priorActions: PriorActions = values._prior_actions || { fields: {}, groups: {} };
+  const fieldHadPrior = (fid: string) =>
+    !!priorSnap && Object.prototype.hasOwnProperty.call(priorSnap.fields, fid);
+  const groupItemHadPrior = (gid: string, ctxKey: string, itemId: string) =>
+    !!priorSnap?.groups?.[gid]?.[ctxKey]?.[itemId];
+  const fieldAction = (fid: string): PriorAction =>
+    (priorActions.fields?.[fid] as PriorAction) || "keep";
+  const groupItemAction = (gid: string, ctxKey: string, itemId: string): PriorAction =>
+    (priorActions.groups?.[gid]?.[ctxKey]?.[itemId] as PriorAction) || "keep";
+  const setFieldAction = (fid: string, action: PriorAction) => {
+    const next: PriorActions = {
+      fields: { ...(priorActions.fields || {}), [fid]: action },
+      groups: priorActions.groups || {},
+    };
+    onChange({ ...values, _prior_actions: next });
+  };
+  const setGroupItemAction = (gid: string, ctxKey: string, itemId: string, action: PriorAction) => {
+    const groupsA = { ...(priorActions.groups || {}) };
+    const gMap = { ...(groupsA[gid] || {}) };
+    const ctxMap = { ...(gMap[ctxKey] || {}), [itemId]: action };
+    gMap[ctxKey] = ctxMap;
+    groupsA[gid] = gMap;
+    onChange({ ...values, _prior_actions: { fields: priorActions.fields || {}, groups: groupsA } });
+  };
+  const setAllPriorActions = (action: PriorAction) => {
+    if (!priorSnap) return;
+    onChange({ ...values, _prior_actions: defaultActionsFromSnapshot(priorSnap, action) });
+  };
+
+  const priorCtx: PriorContext = {
+    active: isPriorAccessMode && !!priorSnap,
+    fieldHadPrior,
+    groupItemHadPrior,
+    fieldAction,
+    groupItemAction,
+    setFieldAction,
+    setGroupItemAction,
+  };
 
   return (
     <div className="space-y-6">
@@ -207,6 +314,14 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
         <TerminationSummary values={values} schema={schema} resources={allResources} />
       )}
 
+      {priorCtx.active && (
+        <PriorAccessBanner
+          disabled={disabled}
+          onRemoveAll={() => setAllPriorActions("remove")}
+          onKeepAll={() => setAllPriorActions("keep")}
+        />
+      )}
+
       {fields.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {fields.filter(isFieldVisible).map((f) => (
@@ -218,6 +333,7 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
               orgSlug={orgSlug}
               allResources={allResources}
               set={set}
+              priorCtx={priorCtx}
             />
           ))}
         </div>
@@ -251,6 +367,7 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
             allResources={allResources}
             fallbackKind={fields.find((x) => x.id === g.dynamic!.source_field_id)?.resource_kind}
             instanceVisible={(r) => evalGroupVisible(g, r)}
+            priorCtx={priorCtx}
           />
         ) : (
         <div key={g.id} className="card">
@@ -258,12 +375,24 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
           <div className="card-body grid grid-cols-1 md:grid-cols-2 gap-3">
             {g.items.map((it) => {
               const checked = !!values._groups?.[g.id]?.[it.id];
+              const hadPrior = !!g.prior_access_tracked && priorCtx.active
+                && priorCtx.groupItemHadPrior(g.id, "default", it.id);
+              const action = hadPrior ? priorCtx.groupItemAction(g.id, "default", it.id) : undefined;
               return (
                 <label key={it.id} className="flex items-start gap-3 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/40">
                   <input type="checkbox" className="mt-1" disabled={disabled} checked={checked}
                     onChange={(e) => setNested(g.id, it.id, e.target.checked)} />
-                  <div>
-                    <div className="text-sm font-medium text-slate-800 dark:text-slate-100">{it.label}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="text-sm font-medium text-slate-800 dark:text-slate-100">{it.label}</div>
+                      {hadPrior && (
+                        <PriorActionPill
+                          action={action!}
+                          disabled={disabled}
+                          onChange={(a) => priorCtx.setGroupItemAction(g.id, "default", it.id, a)}
+                        />
+                      )}
+                    </div>
                     {it.description && <div className="text-xs text-slate-500 dark:text-slate-400">{it.description}</div>}
                   </div>
                 </label>
@@ -277,16 +406,25 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
   );
 }
 
-function FieldRow({ field, values, disabled, orgSlug, allResources, set }: {
+function FieldRow({ field, values, disabled, orgSlug, allResources, set, priorCtx }: {
   field: FormField;
   values: Record<string, any>;
   disabled?: boolean;
   orgSlug?: string;
   allResources: OrgResource[];
   set: (k: string, v: any) => void;
+  priorCtx: PriorContext;
 }) {
   const f = field;
   const isAutoFilled = !!f.auto_from;
+  const showPrior = !!f.prior_access_tracked && priorCtx.active && priorCtx.fieldHadPrior(f.id);
+  const priorPill = showPrior ? (
+    <PriorActionPill
+      action={priorCtx.fieldAction(f.id)}
+      disabled={disabled}
+      onChange={(a) => priorCtx.setFieldAction(f.id, a)}
+    />
+  ) : null;
 
   if (f.type === "resource" && f.resource_kind) {
     let pool = allResources.filter((r) => r.kind === f.resource_kind && r.is_active);
@@ -307,8 +445,9 @@ function FieldRow({ field, values, disabled, orgSlug, allResources, set }: {
     }
     return (
       <div>
-        <label className="label">
-          {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
+        <label className="label flex items-center gap-2">
+          <span>{f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}</span>
+          {priorPill}
         </label>
         {orgSlug ? (
           <select className="input" disabled={disabled} value={values[f.id] ?? ""} onChange={(e) => set(f.id, e.target.value ? Number(e.target.value) : "")}>
@@ -325,9 +464,10 @@ function FieldRow({ field, values, disabled, orgSlug, allResources, set }: {
 
   return (
     <div className={f.type === "textarea" ? "md:col-span-2" : ""}>
-      <label className="label">
-        {f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}
-        {isAutoFilled && <span className="ml-2 text-xs text-slate-400 font-normal">auto-filled</span>}
+      <label className="label flex items-center gap-2">
+        <span>{f.label}{f.required && <span className="text-red-500 ml-0.5">*</span>}</span>
+        {isAutoFilled && <span className="text-xs text-slate-400 font-normal">auto-filled</span>}
+        {priorPill}
       </label>
       {f.type === "textarea" ? (
         <textarea className="input min-h-[80px]" disabled={disabled} value={values[f.id] || ""} onChange={(e) => set(f.id, e.target.value)} />
@@ -522,7 +662,7 @@ export function normalizeDynamicGroupValue(raw: any): DynamicGroupValue {
   return { default: raw as Record<string, boolean>, extras: [] };
 }
 
-function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, sourceFieldLabel, allResources, fallbackKind, instanceVisible }: {
+function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, sourceFieldLabel, allResources, fallbackKind, instanceVisible, priorCtx }: {
   group: FormGroup;
   value: DynamicGroupValue;
   onChange: (v: DynamicGroupValue) => void;
@@ -532,6 +672,7 @@ function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, so
   allResources: OrgResource[];
   fallbackKind?: string;
   instanceVisible?: (resource?: OrgResource) => boolean;
+  priorCtx: PriorContext;
 }) {
   const dyn = group.dynamic!;
   const placeholder = dyn.placeholder || "{Property}";
@@ -580,6 +721,7 @@ function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, so
     const titleText = placeholderInTitle
       ? substitutePlaceholder(group.title, placeholder, contextName)
       : (contextName || group.title);
+    const priorTracked = !!group.prior_access_tracked && priorCtx.active;
     return (
       <div key={contextKey} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/40 dark:bg-slate-900/40 p-3 space-y-2">
         <div className="flex items-center justify-between gap-2">
@@ -603,12 +745,23 @@ function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, so
             const itemLabel = substitutePlaceholder(it.label, placeholder, contextName);
             const itemDesc = it.description ? substitutePlaceholder(it.description, placeholder, contextName) : "";
             const checked = !!selections[it.id];
+            const hadPrior = priorTracked && priorCtx.groupItemHadPrior(group.id, contextKey, it.id);
+            const action = hadPrior ? priorCtx.groupItemAction(group.id, contextKey, it.id) : undefined;
             return (
               <label key={it.id} className="flex items-start gap-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/40">
                 <input type="checkbox" className="mt-1" disabled={disabled} checked={checked}
                   onChange={(e) => onToggle(it.id, e.target.checked)} />
-                <div>
-                  <div className="text-sm font-medium text-slate-800 dark:text-slate-100">{itemLabel}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="text-sm font-medium text-slate-800 dark:text-slate-100">{itemLabel}</div>
+                    {hadPrior && (
+                      <PriorActionPill
+                        action={action!}
+                        disabled={disabled}
+                        onChange={(a) => priorCtx.setGroupItemAction(group.id, contextKey, it.id, a)}
+                      />
+                    )}
+                  </div>
                   {itemDesc && <div className="text-xs text-slate-500 dark:text-slate-400">{itemDesc}</div>}
                 </div>
               </label>
@@ -681,7 +834,7 @@ function DynamicGroupCard({ group, value, onChange, disabled, sourceResource, so
         )}
 
         {visibleExtras.map(({ ex, idx, r }) => renderContext(
-          `extra-${idx}-${ex.resource_id}`,
+          `extra:${ex.resource_id}`,
           r?.name || `#${ex.resource_id}`,
           ex.items,
           (itemId, checked) => setExtra(idx, itemId, checked),
@@ -731,5 +884,115 @@ function DynamicGroupAddPicker({ buttonLabel, options, kindLabel, onPick }: {
         Cancel
       </button>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Prior-access review
+// ---------------------------------------------------------------------------
+
+export type PriorAction = "keep" | "remove";
+
+export interface PriorSnapshot {
+  /** Map of fieldId -> prior value (whatever the field stored: resource id,
+   *  string, etc). Only fields flagged `prior_access_tracked` are captured. */
+  fields: Record<string, any>;
+  /** Map of groupId -> contextKey -> itemId -> true. contextKey is "default"
+   *  for static groups and the dynamic-default block, or "extra:<resource_id>"
+   *  for dynamic extras. */
+  groups: Record<string, Record<string, Record<string, true>>>;
+}
+
+export interface PriorActions {
+  fields: Record<string, PriorAction>;
+  groups: Record<string, Record<string, Record<string, PriorAction>>>;
+}
+
+export interface PriorContext {
+  active: boolean;
+  fieldHadPrior: (fieldId: string) => boolean;
+  groupItemHadPrior: (groupId: string, contextKey: string, itemId: string) => boolean;
+  fieldAction: (fieldId: string) => PriorAction;
+  groupItemAction: (groupId: string, contextKey: string, itemId: string) => PriorAction;
+  setFieldAction: (fieldId: string, action: PriorAction) => void;
+  setGroupItemAction: (groupId: string, contextKey: string, itemId: string, action: PriorAction) => void;
+}
+
+export function defaultActionsFromSnapshot(snap: PriorSnapshot, action: PriorAction): PriorActions {
+  const out: PriorActions = { fields: {}, groups: {} };
+  for (const fid of Object.keys(snap.fields || {})) {
+    out.fields[fid] = action;
+  }
+  for (const [gid, ctxs] of Object.entries(snap.groups || {})) {
+    out.groups[gid] = {};
+    for (const [ctxKey, items] of Object.entries(ctxs)) {
+      out.groups[gid][ctxKey] = {};
+      for (const itemId of Object.keys(items)) {
+        out.groups[gid][ctxKey][itemId] = action;
+      }
+    }
+  }
+  return out;
+}
+
+function PriorAccessBanner({ disabled, onRemoveAll, onKeepAll }: {
+  disabled?: boolean;
+  onRemoveAll: () => void;
+  onKeepAll: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 dark:border-indigo-900 dark:bg-indigo-950/30 p-3">
+      <div className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">
+        Previous access on record
+      </div>
+      <div className="text-xs text-indigo-800/80 dark:text-indigo-300/80 mb-2">
+        This employee's prior submission has been loaded. Tag each previously-configured
+        item below as <strong>Keep</strong> (carry forward) or <strong>Remove</strong>
+        (revoke). Use the buttons below to set a default and then fine-tune per item.
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="btn-secondary text-xs"
+          disabled={disabled}
+          onClick={onKeepAll}
+        >
+          Keep all previous access
+        </button>
+        <button
+          type="button"
+          className="btn-secondary text-xs"
+          disabled={disabled}
+          onClick={onRemoveAll}
+        >
+          Remove all previous access
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PriorActionPill({ action, disabled, onChange }: {
+  action: PriorAction;
+  disabled?: boolean;
+  onChange: (a: PriorAction) => void;
+}) {
+  const isRemove = action === "remove";
+  const label = isRemove ? "REMOVE ACCESS" : "KEEP (PREVIOUS)";
+  const cls = isRemove
+    ? "bg-red-100 text-red-800 border-red-200 hover:bg-red-200 dark:bg-red-950/60 dark:text-red-200 dark:border-red-900"
+    : "bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-900";
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => onChange(isRemove ? "keep" : "remove")}
+      title={isRemove
+        ? "Previously granted — currently tagged for removal. Click to keep instead."
+        : "Previously granted — currently tagged to keep. Click to mark for removal."}
+      className={`text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 rounded-full border ${cls} ${disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
+    >
+      {label}
+    </button>
   );
 }

@@ -156,6 +156,30 @@ def _summary_lines(
     if _is_filled(rt):
         lines.append(f"Request Type: {rt}")
 
+    # Prior-access review annotations (Promotion-style requests). When the
+    # submitter ran an employee lookup and tagged previously-granted items
+    # Keep / Remove, surface those decisions next to each tracked line so
+    # reviewers know what to revoke vs carry forward.
+    prior_snap = payload.get("_prior_snapshot") or {}
+    prior_actions = payload.get("_prior_actions") or {}
+    prior_snap_fields = prior_snap.get("fields") or {}
+    prior_snap_groups = prior_snap.get("groups") or {}
+    prior_act_fields = prior_actions.get("fields") or {}
+    prior_act_groups = prior_actions.get("groups") or {}
+
+    def _field_tag(fid: str) -> str:
+        if fid not in prior_snap_fields:
+            return ""
+        action = prior_act_fields.get(fid, "keep")
+        return "  [REMOVE PREVIOUS ACCESS]" if action == "remove" else "  [keep previous]"
+
+    def _item_tag(gid: str, ctx_key: str, item_id: str) -> str:
+        ctxs = prior_snap_groups.get(gid) or {}
+        if item_id not in (ctxs.get(ctx_key) or {}):
+            return ""
+        action = ((prior_act_groups.get(gid) or {}).get(ctx_key) or {}).get(item_id, "keep")
+        return " [REMOVE]" if action == "remove" else " [keep prior]"
+
     fields = schema.get("fields") or []
     fields_by_id = {f.get("id"): f for f in fields}
 
@@ -169,7 +193,7 @@ def _summary_lines(
             value = _resolve_resource_name(v, resources) or str(v)
         else:
             value = str(v)
-        lines.append(f"{f.get('label') or f.get('id')}: {value}")
+        lines.append(f"{f.get('label') or f.get('id')}: {value}{_field_tag(f.get('id') or '')}")
 
     groups_payload = payload.get("_groups") or {}
     for g in (schema.get("groups") or []):
@@ -200,17 +224,18 @@ def _summary_lines(
                 default_sel = raw if isinstance(raw, dict) else {}
                 extras = []
 
-            def _items_for(sel: dict, name: Optional[str]) -> list[str]:
+            def _items_for(sel: dict, name: Optional[str], ctx_key: str) -> list[str]:
                 out = []
                 for it in (g.get("items") or []):
                     if sel.get(it.get("id")):
-                        out.append(_substitute(it.get("label") or "", placeholder, name))
+                        label = _substitute(it.get("label") or "", placeholder, name)
+                        out.append(f"{label}{_item_tag(gid, ctx_key, it.get('id') or '')}")
                 return out
 
             def _title_for(name: Optional[str]) -> str:
                 return _substitute(g.get("title") or gid, placeholder, name)
 
-            default_items = _items_for(default_sel, default_name)
+            default_items = _items_for(default_sel, default_name, "default")
             # When `visible_when.keep_picker` is set the dynamic group is
             # picker-only: the default block is suppressed regardless of
             # whether the primary resource passes the rule (it would just
@@ -227,7 +252,7 @@ def _summary_lines(
                 ex_resource = resources.get(rid) if isinstance(rid, int) else None
                 if not _eval_visible(visible_when, ex_resource):
                     continue
-                items = _items_for(ex.get("items") or {}, ex_name)
+                items = _items_for(ex.get("items") or {}, ex_name, f"extra:{rid}")
                 if items:
                     title = _title_for(ex_name) if ex_name else f"{_title_for(None)} (resource #{rid})"
                     lines.append(f"{title}: {', '.join(items)}")
@@ -239,7 +264,11 @@ def _summary_lines(
         ):
             continue
         sel = raw if isinstance(raw, dict) else {}
-        labels = [it.get("label") for it in (g.get("items") or []) if sel.get(it.get("id"))]
+        labels = [
+            f"{it.get('label')}{_item_tag(gid, 'default', it.get('id') or '')}"
+            for it in (g.get("items") or [])
+            if sel.get(it.get("id"))
+        ]
         if labels:
             lines.append(f"{g.get('title') or gid}: {', '.join(labels)}")
 

@@ -176,6 +176,13 @@ export default function OrgFormBuilder() {
                 value={doc.termination_request_types || []}
                 onChange={(v) => setDoc({ ...doc, termination_request_types: v })}
               />
+              <RequestTypeChipPicker
+                label="Show previous-access review on these request types"
+                help="For requests like Promotion or Property Transfer: after picking the employee, every field and group flagged 'Include in previous-access review' shows a Keep / Remove pill next to each previously-granted item so reviewers know what to revoke vs carry forward."
+                options={doc.request_types || []}
+                value={doc.prior_access_request_types || []}
+                onChange={(v) => setDoc({ ...doc, prior_access_request_types: v })}
+              />
             </div>
           </div></div>
 
@@ -486,6 +493,18 @@ function FieldEditor({ field, allFields, requestTypes, kindLabels, kindAttrs, on
               </div>
 
               <div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={!!f.prior_access_tracked}
+                    onChange={(e) => onChange({ prior_access_tracked: e.target.checked || undefined })}
+                  />
+                  Include in previous-access review
+                </label>
+                <p className="help">When the request type is in <em>"Show previous-access review on these request types"</em>, the value loaded from the employee's prior submission gets a <strong>Keep</strong> / <strong>Remove</strong> pill next to this field. Use this for items like Property where the reviewer needs to know whether prior access is being revoked.</p>
+              </div>
+
+              <div>
                 <label className="label">Field ID (technical name)</label>
                 <input className="input font-mono text-xs" value={f.id} onChange={(e) => onChange({ id: e.target.value })} />
                 <p className="help">Used in exports and as the storage key. Leave alone unless you know what you're doing.</p>
@@ -536,10 +555,14 @@ function GroupsEditor({ doc, setDoc, kindLabels }: { doc: FormSchemaDoc; setDoc:
       <div className="card-body space-y-4">
         {groups.map((g, i) => (
           <div key={i} className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-2">
-            <div className="flex gap-2 items-center">
+            <div className="flex gap-2 items-center flex-wrap">
               <input className="input" value={g.title} onChange={(e) => setGroup(i, { title: e.target.value })} placeholder="Group title" />
               <input className="input max-w-[160px]" value={g.id} onChange={(e) => setGroup(i, { id: e.target.value })} placeholder="id" />
               <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={g.enabled} onChange={(e) => setGroup(i, { enabled: e.target.checked })} /> enabled</label>
+              <label className="flex items-center gap-1 text-xs" title="When the request type is in 'Show previous-access review on these request types', items checked in the employee's prior submission render a Keep / Remove pill.">
+                <input type="checkbox" checked={!!g.prior_access_tracked} onChange={(e) => setGroup(i, { prior_access_tracked: e.target.checked || undefined })} />
+                previous-access review
+              </label>
               <button className="btn-ghost text-xs" onClick={() => moveGroup(i, -1)} disabled={i === 0} title="Move group up">↑</button>
               <button className="btn-ghost text-xs" onClick={() => moveGroup(i, 1)} disabled={i === groups.length - 1} title="Move group down">↓</button>
               <button className="btn-ghost text-red-600" onClick={() => setDoc({ ...doc, groups: groups.filter((_, j) => j !== i) })}>Remove</button>

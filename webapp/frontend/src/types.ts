@@ -40,6 +40,11 @@ export interface FormSchemaDoc {
   /** Request types that should mark the employee as terminated and surface
    *  the forwarding / mailbox-grant fields in the renderer. */
   termination_request_types?: string[];
+  /** Request types where the renderer surfaces a "previous access review"
+   *  panel: every field and group item flagged with `prior_access_tracked`
+   *  that was filled in by the employee's last submission can be tagged
+   *  Keep / Remove so reviewers know what to revoke. */
+  prior_access_request_types?: string[];
 }
 export type ResourceKind = string;
 export type FieldRole =
@@ -64,11 +69,22 @@ export interface FormField {
   role?: FieldRole;
   /** When set, only render this field if the current request_type is in this list. */
   visible_when_request_type_in?: string[];
+  /** When true and the current request type is in
+   *  `FormSchemaDoc.prior_access_request_types`, this field participates in
+   *  the previous-access review panel (Keep / Remove pill rendered next to
+   *  the value when it matches the snapshot from the employee's prior
+   *  submission). */
+  prior_access_tracked?: boolean;
 }
 export interface FormGroup {
   id: string;
   title: string;
   enabled: boolean;
+  /** When true and the current request type is in
+   *  `FormSchemaDoc.prior_access_request_types`, items in this group that
+   *  were checked in the employee's prior submission render a Keep / Remove
+   *  pill in the renderer. */
+  prior_access_tracked?: boolean;
   items: {
     id: string;
     label: string;
