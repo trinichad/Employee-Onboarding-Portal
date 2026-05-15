@@ -1,5 +1,6 @@
 import type { FormSchemaDoc, OrgResource } from "@/types";
 import { normalizeDynamicGroupValue, substitutePlaceholder } from "@/components/FormRenderer";
+import type React from "react";
 
 interface Props {
   schema: FormSchemaDoc;
@@ -126,11 +127,38 @@ export function RequestSummary({ schema, values, notes, supportMessage, resource
           {rows.map((r, i) => (
             <div key={i} className="contents">
               <dt className="font-medium text-slate-600 dark:text-slate-300">{r.label}:</dt>
-              <dd className="text-slate-900 dark:text-slate-100 whitespace-pre-wrap break-words">{r.value}</dd>
+              <dd className="text-slate-900 dark:text-slate-100 whitespace-pre-wrap break-words">
+                {renderWithPriorTags(r.value)}
+              </dd>
             </div>
           ))}
         </dl>
       </div>
     </div>
   );
+}
+
+// Render a summary value string, replacing the prior-access decision tokens
+// ([REMOVE PREVIOUS ACCESS] / [REMOVE] / [keep previous] / [keep prior])
+// emitted by the renderer with colored, bold inline spans so reviewers can
+// spot Keep vs Remove at a glance. Plain (non-tagged) text is returned as-is.
+function renderWithPriorTags(value: string): React.ReactNode {
+  if (!value) return value;
+  const tokens: { text: string; cls: string }[] = [
+    { text: "[REMOVE PREVIOUS ACCESS]", cls: "text-red-600 dark:text-red-400 font-bold" },
+    { text: "[REMOVE]", cls: "text-red-600 dark:text-red-400 font-bold" },
+    { text: "[keep previous]", cls: "text-green-600 dark:text-green-400 font-bold" },
+    { text: "[keep prior]", cls: "text-green-600 dark:text-green-400 font-bold" },
+  ];
+  // Escape regex specials in tokens and join into an alternation. Longest
+  // first so "[REMOVE PREVIOUS ACCESS]" wins over "[REMOVE]".
+  const escaped = tokens.map((t) => t.text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const re = new RegExp(`(${escaped.join("|")})`, "g");
+  const parts = value.split(re);
+  return parts.map((part, idx) => {
+    const hit = tokens.find((t) => t.text === part);
+    return hit
+      ? <span key={idx} className={hit.cls}>{part}</span>
+      : <span key={idx}>{part}</span>;
+  });
 }

@@ -155,13 +155,38 @@ def build_request_pdf(
     story.append(Spacer(1, 12))
 
     story.append(Paragraph("Request details", h2))
+    # Color the prior-access decision tokens so reviewers can spot REMOVE vs
+    # keep at a glance in the rendered PDF. Tokens come from _summary_lines
+    # in api/v1/requests.py. reportlab's Paragraph accepts a small inline
+    # markup subset including <font color="#xxxxxx">…</font>.
+    _RED = "#dc2626"
+    _GREEN = "#16a34a"
+    _PRIOR_TAGS = (
+        ("[REMOVE PREVIOUS ACCESS]", _RED),
+        ("[REMOVE]", _RED),
+        ("[keep previous]", _GREEN),
+        ("[keep prior]", _GREEN),
+    )
+
+    def _colorize_tags(s: str) -> str:
+        out = s
+        for token, color in _PRIOR_TAGS:
+            out = out.replace(
+                token,
+                f'<font color="{color}"><b>{token}</b></font>',
+            )
+        return out
+
     sum_rows = []
     for ln in summary:
         if ": " in ln:
             label, _, value = ln.partition(": ")
         else:
             label, value = ln, ""
-        sum_rows.append([Paragraph(f"<b>{label}</b>", body), Paragraph(value or "&nbsp;", body)])
+        sum_rows.append([
+            Paragraph(f"<b>{label}</b>", body),
+            Paragraph(_colorize_tags(value) or "&nbsp;", body),
+        ])
     if sum_rows:
         st = Table(sum_rows, colWidths=[2.0 * inch, page_w - 2 * margin - 2.0 * inch])
         st.setStyle(TableStyle([

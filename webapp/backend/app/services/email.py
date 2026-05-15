@@ -326,6 +326,27 @@ def _html_shell(*, title: str, inner: str) -> str:
 
 def _summary_table_html(payload_text: str) -> str:
     """Render lines of `Label: value` into a two-column table."""
+    # Color tokens emitted by _summary_lines for prior-access decisions.
+    # We map each token to a colored span AFTER html-escaping the value so
+    # user content stays safe but the tags pop visually for reviewers.
+    _RED = "#dc2626"
+    _GREEN = "#16a34a"
+    _TAG_STYLES = {
+        "[REMOVE PREVIOUS ACCESS]": _RED,
+        "[REMOVE]": _RED,
+        "[keep previous]": _GREEN,
+        "[keep prior]": _GREEN,
+    }
+
+    def _colorize(escaped: str) -> str:
+        out = escaped
+        for token, color in _TAG_STYLES.items():
+            out = out.replace(
+                token,
+                f"<span style=\"color:{color};font-weight:700;\">{token}</span>",
+            )
+        return out
+
     rows_html: list[str] = []
     for ln in (payload_text or "").splitlines():
         if not ln.strip():
@@ -337,7 +358,7 @@ def _summary_table_html(payload_text: str) -> str:
         rows_html.append(
             f"<tr>"
             f"<td style=\"padding:8px 12px;border-bottom:1px solid {_COL_BORDER};color:{_COL_MUTED};font-size:13px;font-weight:600;vertical-align:top;width:38%;\">{_html_escape(label)}</td>"
-            f"<td style=\"padding:8px 12px;border-bottom:1px solid {_COL_BORDER};color:{_COL_TEXT};font-size:13px;vertical-align:top;\">{_html_escape(value) or '&nbsp;'}</td>"
+            f"<td style=\"padding:8px 12px;border-bottom:1px solid {_COL_BORDER};color:{_COL_TEXT};font-size:13px;vertical-align:top;\">{_colorize(_html_escape(value)) or '&nbsp;'}</td>"
             f"</tr>"
         )
     if not rows_html:
