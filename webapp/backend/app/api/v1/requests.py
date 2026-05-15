@@ -514,6 +514,19 @@ def submit_request_to_support(
     resources = _resources_by_id(db, org.id)
     summary_lines = _summary_lines(row.payload or {}, schema, resources) or ["(no fields filled in)"]
     summary = "\n".join(summary_lines)
+    # Flip status to SUBMITTED *before* rendering the PDF so the document
+    # reflects the post-send state (otherwise the attached PDF would show
+    # "Pending Submittal"). Other submit-time fields are set here too so
+    # the PDF "Submitted" timestamp matches the email. If sending later
+    # fails the db.commit() below is the gate that persists this — an
+    # exception before then rolls everything back.
+    row.status = RequestStatus.SUBMITTED
+    row.submitted_at = _now()
+    if row.first_submitted_at is None:
+        row.first_submitted_at = row.submitted_at
+    row.submitted_by_id = current.user.id
+    row.submission_count = (row.submission_count or 0) + 1
+    row.edited_after_submit = False
     from app.services.request_pdf import build_request_pdf, pdf_filename_for
     try:
         pdf_bytes = build_request_pdf(db, org, row, summary_lines, submitter)
@@ -536,13 +549,6 @@ def submit_request_to_support(
         attachments=pdf_attachment,
     )
 
-    row.status = RequestStatus.SUBMITTED
-    row.submitted_at = _now()
-    if row.first_submitted_at is None:
-        row.first_submitted_at = row.submitted_at
-    row.submitted_by_id = current.user.id
-    row.submission_count = (row.submission_count or 0) + 1
-    row.edited_after_submit = False
     # Update the org-wide employee directory from this submission so future
     # Promotion / Termination / Rehire requests can typeahead and prefill.
     try:
