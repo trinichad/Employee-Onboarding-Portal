@@ -8,6 +8,7 @@ Run from `webapp/backend` with the venv active:
     python -m app.cli activate <email>
     python -m app.cli deactivate <email>
     python -m app.cli promote <email>          # make global_admin
+    python -m app.cli rebuild-employee-payloads [--dry-run]
 
 If --password is omitted, a strong random password is generated and printed.
 """
@@ -21,8 +22,9 @@ import sys
 
 from app.core.security import hash_password
 from app.db.session import Base, SessionLocal, engine
-from app.models import Role, User
+from app.models import Employee, EmployeeRequest, Role, User
 import app.models  # noqa: F401
+from app.api.v1.employees import _effective_payload
 
 
 def _gen_password(length: int = 16) -> str:
@@ -135,6 +137,44 @@ def cmd_create_admin(args: argparse.Namespace) -> None:
         db.close()
 
 
+def cmd_rebuild_employee_payloads(args: argparse.Namespace) -> None:
+    """One-shot: recompute Employee.last_payload by re-pruning the most
+    recent request's payload through `_effective_payload`. Use this after
+    deploying the prior-access pruning fix so existing employee records stop
+    surfacing already-removed items as 'previously granted'.
+
+    Pass --dry-run to only print what would change.
+    """
+    db = SessionLocal()
+    try:
+        rows = db.query(Employee).all()
+        changed = 0
+        skipped = 0
+        for emp in rows:
+            if not emp.last_request_id:
+                skipped += 1
+                continue
+            req = db.query(EmployeeRequest).filter(EmployeeRequest.id == emp.last_request_id).one_or_none()
+            if req is None or not isinstance(req.payload, dict):
+                skipped += 1
+                continue
+            new_payload = _effective_payload(req.payload)
+            if new_payload == (emp.last_payload or {}):
+                continue
+            label = f"#{emp.id} {emp.full_name or emp.email or '?'}"
+            print(f"  rebuild {label}: from request #{req.id}")
+            if not args.dry_run:
+                emp.last_payload = new_payload
+            changed += 1
+        if args.dry_run:
+            print(f"DRY RUN: would update {changed} employee record(s); skipped {skipped} with no request.")
+        else:
+            db.commit()
+            print(f"Updated {changed} employee record(s); skipped {skipped} with no request.")
+    finally:
+        db.close()
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="app.cli")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -164,6 +204,13 @@ def main(argv: list[str] | None = None) -> None:
     ca.add_argument("--password", help="Specific password (otherwise prompted or auto-generated)")
     ca.add_argument("--name", help="Full name (default: 'Platform Admin')")
     ca.set_defaults(func=cmd_create_admin)
+
+    rb = sub.add_parser(
+        "rebuild-employee-payloads",
+        help="Rebuild Employee.last_payload from each employee's most recent request, applying prior-access REMOVE pruning.",
+    )
+    rb.add_argument("--dry-run", action="store_true", help="Show what would change without writing.")
+    rb.set_defaults(func=cmd_rebuild_employee_payloads)
 
     args = p.parse_args(argv)
     args.func(args)
