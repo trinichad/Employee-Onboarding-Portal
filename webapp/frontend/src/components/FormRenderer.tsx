@@ -116,12 +116,31 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
   };
   useEffect(() => {
     if (!schema.groups || schema.groups.length === 0) return;
+    // Helper: for a dynamic group instance, the "source" being watched is
+    // the instance's resource_id (default context = values[dyn.source_field_id],
+    // extra context = the extra's resource_id). When that id changes we
+    // re-seed checkboxes from the resource's attribute.
+    const dynKey = (gid: string, ctxKey: string, itemId: string) =>
+      `dyn|${gid}|${ctxKey}|${itemId}`;
     // First pass: seed last-seen source values so we don't overwrite the
     // checkbox selections an admin already saved on this request.
     if (lastSourceRef.current === null) {
       const seed: Record<string, any> = {};
       for (const g of schema.groups) {
-        if (!g.enabled || g.dynamic) continue;
+        if (!g.enabled) continue;
+        if (g.dynamic) {
+          const sid = g.dynamic.source_field_id;
+          const defaultRid = sid ? values[sid] : undefined;
+          const dv = normalizeDynamicGroupValue((values._groups || {})[g.id]);
+          for (const it of g.items || []) {
+            if (!it.auto_check_from?.attribute) continue;
+            seed[dynKey(g.id, "default", it.id)] = defaultRid;
+            for (const ex of dv.extras) {
+              seed[dynKey(g.id, `extra:${ex.resource_id}`, it.id)] = ex.resource_id;
+            }
+          }
+          continue;
+        }
         for (const it of g.items || []) {
           const acf = it.auto_check_from;
           if (!acf?.source_field_id) continue;
@@ -135,7 +154,61 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
     let nextGroups: Record<string, any> | null = null;
     const ref = lastSourceRef.current;
     for (const g of schema.groups) {
-      if (!g.enabled || g.dynamic) continue;
+      if (!g.enabled) continue;
+      if (g.dynamic) {
+        // For dynamic groups, each rendered instance has its own resource;
+        // auto-check is evaluated against that instance's resource attribute.
+        // We only flip the box when the resource_id for the instance changes
+        // (i.e. the placeholder just got populated, or the user picked a
+        // different resource for that instance) so we don't fight the user
+        // toggling a box afterwards.
+        const sid = g.dynamic.source_field_id;
+        const defaultRidRaw = sid ? values[sid] : undefined;
+        const defaultRidNum = defaultRidRaw === undefined || defaultRidRaw === null || defaultRidRaw === ""
+          ? NaN : Number(defaultRidRaw);
+        const dv = normalizeDynamicGroupValue((values._groups || {})[g.id]);
+        type Ctx = { key: string; rid: number; target: "default" | { extraIdx: number } };
+        const contexts: Ctx[] = [];
+        if (Number.isFinite(defaultRidNum)) {
+          contexts.push({ key: "default", rid: defaultRidNum, target: "default" });
+        } else {
+          // Track an "unset" sentinel so we still notice when it becomes set.
+          contexts.push({ key: "default", rid: NaN, target: "default" });
+        }
+        dv.extras.forEach((ex, extraIdx) => {
+          contexts.push({ key: `extra:${ex.resource_id}`, rid: ex.resource_id, target: { extraIdx } });
+        });
+        for (const it of g.items || []) {
+          const acf = it.auto_check_from;
+          if (!acf?.attribute) continue;
+          for (const ctx of contexts) {
+            const key = dynKey(g.id, ctx.key, it.id);
+            const prev = ref[key];
+            // Use NaN-safe comparison: NaN !== NaN, treat both NaN as equal.
+            const same = prev === ctx.rid || (Number.isNaN(prev) && Number.isNaN(ctx.rid));
+            if (same) continue;
+            ref[key] = ctx.rid;
+            if (!Number.isFinite(ctx.rid)) continue; // placeholder not populated yet
+            const r = allResources.find((x) => x.id === ctx.rid);
+            if (!r) continue;
+            const defaultChecked = isTruthyAttr(r.attributes?.[acf.attribute]);
+            const ng: Record<string, any> = nextGroups ?? { ...(values._groups || {}) };
+            const prevG = normalizeDynamicGroupValue(ng[g.id]);
+            if (ctx.target === "default") {
+              ng[g.id] = { ...prevG, default: { ...prevG.default, [it.id]: defaultChecked } };
+            } else {
+              const extras = prevG.extras.slice();
+              const idx = ctx.target.extraIdx;
+              if (extras[idx]) {
+                extras[idx] = { ...extras[idx], items: { ...extras[idx].items, [it.id]: defaultChecked } };
+                ng[g.id] = { ...prevG, extras };
+              }
+            }
+            nextGroups = ng;
+          }
+        }
+        continue;
+      }
       for (const it of g.items || []) {
         const acf = it.auto_check_from;
         if (!acf?.source_field_id || !acf?.attribute) continue;

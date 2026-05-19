@@ -637,12 +637,39 @@ function GroupsEditor({ doc, setDoc, kindLabels }: { doc: FormSchemaDoc; setDoc:
                       )}
                     </div>
                   )}
+                  {g.dynamic && (
+                    <div className="grid grid-cols-12 gap-2 items-center pt-1 border-t border-dashed border-slate-200 dark:border-slate-700 text-xs text-slate-500">
+                      <span className="col-span-4 whitespace-nowrap">Auto-check from per-resource attribute:</span>
+                      <input
+                        className="input text-xs py-1 font-mono col-span-5"
+                        placeholder="attribute key (leave blank for manual)"
+                        value={it.auto_check_from?.attribute || ""}
+                        onChange={(e) => {
+                          const attr = e.target.value;
+                          setGroup(i, {
+                            items: g.items.map((x, k) => k === j ? {
+                              ...x,
+                              auto_check_from: attr
+                                ? { source_field_id: g.dynamic?.source_field_id || "", attribute: attr }
+                                : undefined,
+                            } : x),
+                          });
+                        }}
+                      />
+                      <span className="col-span-3" />
+                    </div>
+                  )}
                 </div>
               ))}
               <button className="btn-ghost text-sm" onClick={() => addItem(i)}>+ Add item</button>
               {!g.dynamic && resourceFields.length > 0 && (
                 <p className="help mt-1">
                   <strong>Auto-check tip:</strong> pick a resource field (e.g. <em>Title</em>) and an attribute key (e.g. <code>adobe_acrobat</code>). Set that attribute to <code>yes</code> / <code>true</code> / <code>x</code> on each resource (e.g. each Job Title) under <strong>Resources → Manage categories</strong>. The checkbox will tick automatically when a matching resource is selected.
+                </p>
+              )}
+              {g.dynamic && (
+                <p className="help mt-1">
+                  <strong>Auto-check tip:</strong> enter an attribute key (e.g. <code>network_access</code>). The checkbox ticks automatically the moment a resource is picked for that instance — using that resource's own attribute value. Manage per-resource attributes under <strong>Resources → Manage categories</strong>.
                 </p>
               )}
             </div>

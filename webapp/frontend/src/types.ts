@@ -94,7 +94,14 @@ export interface FormGroup {
      *  `resource.attributes[attribute]` and treated as truthy/falsy
      *  ("yes"/"true"/"1"/"x" → checked; "no"/"false"/"0"/empty → unchecked).
      *  Defaults reapply when the source value changes; the user is free to
-     *  toggle afterwards. Not applied in dynamic groups. */
+     *  toggle afterwards.
+     *
+     *  In dynamic (per-resource) groups, `source_field_id` is ignored — the
+     *  attribute is read from each rendered instance's own resource. Defaults
+     *  are applied the moment the instance's placeholder becomes populated
+     *  (default context: when the source field is first set; extra contexts:
+     *  when the extra is added via the picker) and whenever that instance's
+     *  resource is swapped for a different one. */
     auto_check_from?: { source_field_id: string; attribute: string };
   }[];
   /** When set, this group is rendered once per "context resource". The group
