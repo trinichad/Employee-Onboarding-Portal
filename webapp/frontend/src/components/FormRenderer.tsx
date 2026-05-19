@@ -254,32 +254,6 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [values, allResources, schema.groups]);
-      for (const it of g.items || []) {
-        const acf = it.auto_check_from;
-        if (!acf?.source_field_id || !acf?.attribute) continue;
-        const sid = acf.source_field_id;
-        const cur = values[sid];
-        const key = `${g.id}|${it.id}|${sid}`;
-        if (ref[key] === cur) continue;
-        ref[key] = cur;
-        const sourceField = fields.find((x) => x.id === sid);
-        let defaultChecked = false;
-        if (sourceField?.type === "resource") {
-          const r = allResources.find((x) => x.id === Number(cur));
-          if (r) defaultChecked = isTruthyAttr(r.attributes?.[acf.attribute]);
-        } else if (cur !== undefined && cur !== null && cur !== "") {
-          defaultChecked = isTruthyAttr(cur);
-        }
-        const ng: Record<string, any> = nextGroups ?? { ...(values._groups || {}) };
-        ng[g.id] = { ...(ng[g.id] || {}), [it.id]: defaultChecked };
-        nextGroups = ng;
-      }
-    }
-    if (nextGroups) {
-      onChange({ ...values, _groups: nextGroups });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [values, allResources, schema.groups]);
 
   function setNested(group: string, item: string, v: any) {
     const groups = { ...(values._groups || {}) };
