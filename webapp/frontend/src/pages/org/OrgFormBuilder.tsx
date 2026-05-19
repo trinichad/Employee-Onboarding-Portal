@@ -639,24 +639,46 @@ function GroupsEditor({ doc, setDoc, kindLabels }: { doc: FormSchemaDoc; setDoc:
                   )}
                   {g.dynamic && (
                     <div className="grid grid-cols-12 gap-2 items-center pt-1 border-t border-dashed border-slate-200 dark:border-slate-700 text-xs text-slate-500">
-                      <span className="col-span-4 whitespace-nowrap">Auto-check from per-resource attribute:</span>
-                      <input
-                        className="input text-xs py-1 font-mono col-span-5"
-                        placeholder="attribute key (leave blank for manual)"
-                        value={it.auto_check_from?.attribute || ""}
+                      <span className="col-span-3 whitespace-nowrap">Auto-check based on:</span>
+                      <select
+                        className="input text-xs py-1 col-span-4"
+                        value={it.auto_check_from?.source_field_id || ""}
                         onChange={(e) => {
-                          const attr = e.target.value;
+                          const sid = e.target.value;
                           setGroup(i, {
                             items: g.items.map((x, k) => k === j ? {
                               ...x,
-                              auto_check_from: attr
-                                ? { source_field_id: g.dynamic?.source_field_id || "", attribute: attr }
+                              auto_check_from: sid
+                                ? { source_field_id: sid, attribute: x.auto_check_from?.attribute || "" }
                                 : undefined,
                             } : x),
                           });
                         }}
-                      />
-                      <span className="col-span-3" />
+                      >
+                        <option value="">(none — manual only)</option>
+                        <option value="__self__">(this card's resource)</option>
+                        {resourceFields.map((rf) => (
+                          <option key={rf.id} value={rf.id}>{rf.label || rf.id}</option>
+                        ))}
+                      </select>
+                      {it.auto_check_from?.source_field_id ? (
+                        <>
+                          <span className="col-span-2 text-right whitespace-nowrap">attribute</span>
+                          <input
+                            className="input text-xs py-1 font-mono col-span-3"
+                            placeholder="e.g. network_access"
+                            value={it.auto_check_from.attribute || ""}
+                            onChange={(e) => setGroup(i, {
+                              items: g.items.map((x, k) => k === j ? {
+                                ...x,
+                                auto_check_from: { source_field_id: it.auto_check_from!.source_field_id, attribute: e.target.value },
+                              } : x),
+                            })}
+                          />
+                        </>
+                      ) : (
+                        <span className="col-span-5" />
+                      )}
                     </div>
                   )}
                 </div>
@@ -669,7 +691,7 @@ function GroupsEditor({ doc, setDoc, kindLabels }: { doc: FormSchemaDoc; setDoc:
               )}
               {g.dynamic && (
                 <p className="help mt-1">
-                  <strong>Auto-check tip:</strong> enter an attribute key (e.g. <code>network_access</code>). The checkbox ticks automatically the moment a resource is picked for that instance — using that resource's own attribute value. Manage per-resource attributes under <strong>Resources → Manage categories</strong>.
+                  <strong>Auto-check tip:</strong> choose <em>(this card's resource)</em> to read the attribute from whichever resource the card represents (e.g. each Property), or pick a different resource field to use that field's resource for every card. Then enter the attribute key (e.g. <code>network_access</code>). The checkbox ticks automatically the moment the card's resource is populated. Manage per-resource attributes under <strong>Resources → Manage categories</strong>.
                 </p>
               )}
             </div>
