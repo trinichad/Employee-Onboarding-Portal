@@ -668,6 +668,8 @@ def admin_delete_user(
     if user.id == current.user.id:
         raise HTTPException(status_code=400, detail="You cannot delete your own account")
     org_id = user.organization_id
+    from app.api.v1.users import _detach_user_references
+    _detach_user_references(db, user.id)
     db.delete(user)
     audit(db, actor_id=current.user.id, action="admin.delete_user",
           organization_id=org_id, target_type="user", target_id=user_id)

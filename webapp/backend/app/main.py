@@ -41,6 +41,14 @@ def _ensure_dev_schema() -> None:
             ).fetchone()
             return bool(r)
 
+        # Drop legacy ticket tables (feature removed). Their FKs to users(id)
+        # were blocking user deletes. ticket_messages must go first (FK to
+        # support_tickets).
+        if table_exists("ticket_messages"):
+            conn.exec_driver_sql("DROP TABLE ticket_messages")
+        if table_exists("support_tickets"):
+            conn.exec_driver_sql("DROP TABLE support_tickets")
+
         if table_exists("users") and not has_col("users", "can_approve_requests"):
             conn.exec_driver_sql(
                 "ALTER TABLE users ADD COLUMN can_approve_requests BOOLEAN NOT NULL DEFAULT 0"

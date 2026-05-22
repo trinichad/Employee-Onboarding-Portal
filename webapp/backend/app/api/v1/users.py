@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.deps import require_org_admin, require_org_member
 from app.db.session import get_db
-from app.models import InviteToken, PasswordResetToken, Role, User
+from app.models import EmployeeRequest, FormSchema, InviteToken, PasswordResetToken, Role, User
 from app.schemas import UserCreateInvite, UserOut, UserUpdate
 from app.services.audit import audit
 from app.services.email import invite_email, reset_email
@@ -106,10 +106,32 @@ def delete_user(user_id: int, bound=Depends(require_org_admin), db: Session = De
         raise HTTPException(status_code=404, detail="User not found")
     if user.id == current.user.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    _detach_user_references(db, user.id)
     db.delete(user)
     audit(db, actor_id=current.user.id, action="user.delete", organization_id=org.id,
           target_type="user", target_id=user_id)
     db.commit()
+
+
+def _detach_user_references(db: Session, user_id: int) -> None:
+    """Null out FK references to a user so the row can be deleted without violating
+    foreign-key constraints. Preserves history (form schemas, requests, invites) but
+    drops the actor link."""
+    db.query(FormSchema).filter(FormSchema.created_by_id == user_id).update(
+        {"created_by_id": None}, synchronize_session=False
+    )
+    db.query(EmployeeRequest).filter(EmployeeRequest.submitter_id == user_id).update(
+        {"submitter_id": None}, synchronize_session=False
+    )
+    db.query(EmployeeRequest).filter(EmployeeRequest.approved_by_id == user_id).update(
+        {"approved_by_id": None}, synchronize_session=False
+    )
+    db.query(EmployeeRequest).filter(EmployeeRequest.submitted_by_id == user_id).update(
+        {"submitted_by_id": None}, synchronize_session=False
+    )
+    db.query(InviteToken).filter(InviteToken.invited_by_id == user_id).update(
+        {"invited_by_id": None}, synchronize_session=False
+    )
 
 
 @router.post("/{user_id}/reset-password", status_code=204, response_class=Response)
