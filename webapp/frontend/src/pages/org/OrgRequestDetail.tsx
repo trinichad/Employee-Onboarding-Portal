@@ -9,7 +9,6 @@ import { useAuth } from "@/auth/AuthContext";
 import { FormRenderer } from "@/components/FormRenderer";
 import { RequestSummary } from "@/components/RequestSummary";
 import { PageHeader, Spinner, StatusBadge } from "@/components/ui";
-import type { RequestStatus } from "@/types";
 import { formatDateTime } from "@/lib/platform";
 
 export default function OrgRequestDetail() {
@@ -32,14 +31,12 @@ export default function OrgRequestDetail() {
   const [values, setValues] = useState<Record<string, any>>({});
   const [notes, setNotes] = useState("");
   const [supportMessage, setSupportMessage] = useState("");
-  const [status, setStatus] = useState<RequestStatus>("pending_approval");
 
   useEffect(() => {
     if (req.data) {
       setValues(req.data.payload || {});
       setNotes(req.data.notes || "");
       setSupportMessage(req.data.support_message || "");
-      setStatus(req.data.status);
     }
   }, [req.data]);
 
@@ -55,16 +52,12 @@ export default function OrgRequestDetail() {
         (typeof values.request_type === "string" && values.request_type) ||
         req.data?.subject ||
         "Request";
-      const patch: Partial<{ subject: string; payload: any; notes: string; support_message: string; status: RequestStatus }> = {
+      const patch: Partial<{ subject: string; payload: any; notes: string; support_message: string }> = {
         subject: derivedSubject,
         payload: values,
         notes,
         support_message: supportMessage,
       };
-      // Only admins are allowed to change status; only send it when it actually changed.
-      if (isAdmin && req.data && status !== req.data.status) {
-        patch.status = status;
-      }
       return orgApi.updateRequest(orgSlug, rid, patch);
     },
     onSuccess: () => { toast.success("Saved"); invalidate(); },
@@ -173,17 +166,7 @@ export default function OrgRequestDetail() {
       <div className="card mb-6">
         <div className="card-body flex flex-wrap gap-4 items-center">
           <div><div className="text-xs text-slate-500">Status</div>
-            {isAdmin ? (
-              <select className="input mt-1 max-w-[200px]" value={status} onChange={(e) => setStatus(e.target.value as RequestStatus)}>
-                <option value="pending_approval">pending_approval</option>
-                <option value="pending_submittal">pending_submittal</option>
-                <option value="submitted">submitted</option>
-                <option value="in_progress">in_progress</option>
-                <option value="completed">completed</option>
-                <option value="rejected">rejected</option>
-                <option value="canceled">canceled</option>
-              </select>
-            ) : <div className="mt-1"><StatusBadge status={req.data.status} edited={editedAfterSubmit} /></div>}
+            <div className="mt-1"><StatusBadge status={req.data.status} edited={editedAfterSubmit} /></div>
           </div>
           <div><div className="text-xs text-slate-500">Submitted</div><div>{formatDateTime(req.data.created_at)}</div></div>
           <div><div className="text-xs text-slate-500">Type</div><div>{req.data.request_type}</div></div>

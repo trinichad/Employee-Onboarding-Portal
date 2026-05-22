@@ -405,11 +405,10 @@ def update_request(
     if not is_admin and not is_submitter:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    # Only admins may change status. Submitters can edit everything else on their own request.
-    if body.status is not None:
-        if not is_admin:
-            raise HTTPException(status_code=403, detail="Only admins can change status")
-        row.status = body.status
+    # Status is lifecycle-managed: changes happen via the dedicated approve /
+    # reject / submit / resubmit endpoints, never through this PATCH. Manual
+    # status edits used to bypass submitted_at / first_submitted_at bookkeeping,
+    # which broke the edited_after_submit + resubmit flow.
     # Track whether substantive (emailed) fields change after the request was sent
     # to support, so reviewers can see it diverges from what support received.
     already_sent = row.submitted_at is not None

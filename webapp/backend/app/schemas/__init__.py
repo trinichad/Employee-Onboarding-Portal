@@ -233,7 +233,6 @@ class EmployeeRequestCreate(BaseModel):
 
 
 class EmployeeRequestUpdate(BaseModel):
-    status: Optional[RequestStatus] = None
     subject: Optional[str] = None
     payload: Optional[Dict[str, Any]] = None
     notes: Optional[str] = None
