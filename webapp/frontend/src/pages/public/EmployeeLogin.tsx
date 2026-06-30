@@ -66,8 +66,11 @@ export default function EmployeeLogin() {
     <AuthShell title="Sign in" subtitle="Employee Onboarding Portal">
       <form onSubmit={submit} className="space-y-4">
         <div>
-          <label className="label">Email</label>
+          <label className="label" htmlFor="emp-email">Email</label>
           <input
+            id="emp-email"
+            name="email"
+            autoComplete="email"
             className="input"
             type="email"
             autoFocus
@@ -77,8 +80,11 @@ export default function EmployeeLogin() {
           />
         </div>
         <div>
-          <label className="label">Password</label>
+          <label className="label" htmlFor="emp-password">Password</label>
           <input
+            id="emp-password"
+            name="password"
+            autoComplete="current-password"
             className="input"
             type="password"
             required
@@ -88,8 +94,10 @@ export default function EmployeeLogin() {
         </div>
         {choices && choices.length > 1 && (
           <div>
-            <label className="label">Organization</label>
+            <label className="label" htmlFor="emp-org">Organization</label>
             <select
+              id="emp-org"
+              name="organization"
               className="input"
               value={chosenSlug}
               onChange={(e) => setChosenSlug(e.target.value)}

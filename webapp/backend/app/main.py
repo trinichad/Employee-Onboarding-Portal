@@ -85,6 +85,10 @@ def _ensure_dev_schema() -> None:
             conn.exec_driver_sql(
                 "ALTER TABLE organizations ADD COLUMN dashboard_columns JSON"
             )
+        if table_exists("organizations") and not has_col("organizations", "require_approval"):
+            conn.exec_driver_sql(
+                "ALTER TABLE organizations ADD COLUMN require_approval BOOLEAN NOT NULL DEFAULT 1"
+            )
         if table_exists("platform_settings") and not has_col("platform_settings", "default_from_email"):
             conn.exec_driver_sql(
                 "ALTER TABLE platform_settings ADD COLUMN default_from_email VARCHAR(255) NOT NULL DEFAULT ''"

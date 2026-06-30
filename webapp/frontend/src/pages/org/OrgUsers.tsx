@@ -115,12 +115,12 @@ export default function OrgUsers() {
 
       <Modal open={open} onClose={() => setOpen(false)} title="Invite user">
         <div className="space-y-4">
-          <div><label className="label">Full name</label>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} /></div>
-          <div><label className="label">Email</label>
-            <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-          <div><label className="label">Role</label>
-            <select className="input" value={role} onChange={(e) => setRole(e.target.value as Role)}>
+          <div><label className="label" htmlFor="orguser-name">Full name</label>
+            <input id="orguser-name" className="input" value={name} onChange={(e) => setName(e.target.value)} /></div>
+          <div><label className="label" htmlFor="orguser-email">Email</label>
+            <input id="orguser-email" className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+          <div><label className="label" htmlFor="orguser-role">Role</label>
+            <select id="orguser-role" className="input" value={role} onChange={(e) => setRole(e.target.value as Role)}>
               <option value="user">Standard User</option>
               {isGlobal && <option value="client_admin">Client Admin</option>}
             </select>

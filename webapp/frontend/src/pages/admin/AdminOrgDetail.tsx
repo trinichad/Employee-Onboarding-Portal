@@ -172,10 +172,10 @@ export default function AdminOrgDetail() {
 
       <Modal open={inviteOpen} onClose={() => setInviteOpen(false)} title="Invite Client Admin">
         <div className="space-y-4">
-          <div><label className="label">Full name</label>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} /></div>
-          <div><label className="label">Email</label>
-            <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+          <div><label className="label" htmlFor="aod-invite-name">Full name</label>
+            <input id="aod-invite-name" className="input" value={name} onChange={(e) => setName(e.target.value)} /></div>
+          <div><label className="label" htmlFor="aod-invite-email">Email</label>
+            <input id="aod-invite-email" className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
           <div className="flex justify-end gap-2">
             <button className="btn-secondary" onClick={() => setInviteOpen(false)}>Cancel</button>
             <button className="btn-primary" disabled={!email || !name || invite.isPending} onClick={() => invite.mutate()}>Send invite</button>
@@ -194,8 +194,8 @@ export default function AdminOrgDetail() {
             </ul>
           </div>
           <div>
-            <label className="label">Type <code className="bg-slate-100 px-1 rounded">{org.name}</code> to confirm</label>
-            <input className="input" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+            <label className="label" htmlFor="aod-delete-confirm">Type <code className="bg-slate-100 px-1 rounded">{org.name}</code> to confirm</label>
+            <input id="aod-delete-confirm" className="input" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
           </div>
           <div className="flex justify-end gap-2">
             <button className="btn-secondary" onClick={() => setDelOpen(false)}>Cancel</button>

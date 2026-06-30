@@ -28,6 +28,8 @@ def update_org_settings(
     # Org admins can edit support email, dashboard columns, branding, and name.
     if body.name is not None:
         org.name = body.name.strip()
+    if body.require_approval is not None:
+        org.require_approval = body.require_approval
     if body.branding is not None:
         org.branding = body.branding
     if body.support_email is not None:

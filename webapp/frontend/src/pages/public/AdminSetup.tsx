@@ -40,20 +40,20 @@ export default function AdminSetup() {
           and settings. You can change everything later.
         </p>
         <div>
-          <label className="label">Your name</label>
-          <input className="input" autoFocus value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Platform Admin" />
+          <label className="label" htmlFor="setup-name">Your name</label>
+          <input id="setup-name" name="name" autoComplete="name" className="input" autoFocus value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Platform Admin" />
         </div>
         <div>
-          <label className="label">Email</label>
-          <input className="input" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          <label className="label" htmlFor="setup-email">Email</label>
+          <input id="setup-email" name="email" autoComplete="username" className="input" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <div>
-          <label className="label">Password</label>
-          <input className="input" type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} />
+          <label className="label" htmlFor="setup-password">Password</label>
+          <input id="setup-password" name="new-password" autoComplete="new-password" className="input" type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
         <div>
-          <label className="label">Confirm password</label>
-          <input className="input" type="password" required minLength={8} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+          <label className="label" htmlFor="setup-confirm">Confirm password</label>
+          <input id="setup-confirm" name="confirm-password" autoComplete="new-password" className="input" type="password" required minLength={8} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
         </div>
         <button type="submit" className="btn-primary w-full" disabled={busy}>
           {busy ? "Creating…" : "Create admin account"}

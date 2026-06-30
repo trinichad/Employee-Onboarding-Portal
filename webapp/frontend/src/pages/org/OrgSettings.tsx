@@ -26,6 +26,7 @@ export default function OrgSettings() {
   const [fromEmail, setFromEmail] = useState("");
   const [fromName, setFromName] = useState("");
   const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS);
+  const [requireApproval, setRequireApproval] = useState(true);
 
   useEffect(() => {
     if (org.data) {
@@ -33,6 +34,7 @@ export default function OrgSettings() {
       setFromEmail(org.data.from_email || "");
       setFromName(org.data.from_name || "");
       setColumns(org.data.dashboard_columns?.length ? org.data.dashboard_columns : DEFAULT_COLUMNS);
+      setRequireApproval(org.data.require_approval ?? true);
     }
   }, [org.data]);
 
@@ -42,6 +44,7 @@ export default function OrgSettings() {
       from_email: fromEmail,
       from_name: fromName,
       dashboard_columns: columns,
+      require_approval: requireApproval,
     }),
     onSuccess: () => {
       toast.success("Settings saved");
@@ -85,21 +88,42 @@ export default function OrgSettings() {
           <div className="card-header"><h3 className="font-semibold">Email</h3></div>
           <div className="card-body space-y-4">
             <div>
-              <label className="label">Team support email (To)</label>
-              <input className="input" type="email" value={supportEmail} onChange={(e) => setSupportEmail(e.target.value)} placeholder="support@example.com" />
+              <label className="label" htmlFor="org-support-email">Team support email (To)</label>
+              <input id="org-support-email" className="input" type="email" value={supportEmail} onChange={(e) => setSupportEmail(e.target.value)} placeholder="support@example.com" />
               <p className="text-xs text-slate-500 mt-1">When a request is approved and sent, the full request is emailed to this address so your team can handle the new employee setup.</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="label">Sender email (From)</label>
-                <input className="input" type="email" value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} placeholder="noreply@yourdomain.com" />
+                <label className="label" htmlFor="org-from-email">Sender email (From)</label>
+                <input id="org-from-email" className="input" type="email" value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} placeholder="noreply@yourdomain.com" />
               </div>
               <div>
-                <label className="label">Sender name</label>
-                <input className="input" value={fromName} onChange={(e) => setFromName(e.target.value)} placeholder="Acme IT" />
+                <label className="label" htmlFor="org-from-name">Sender name</label>
+                <input id="org-from-name" className="input" value={fromName} onChange={(e) => setFromName(e.target.value)} placeholder="Acme IT" />
               </div>
             </div>
             <p className="text-xs text-slate-500">Outbound notifications (approval requests, approvals, support submissions, invites and password resets) will be sent from this address. If you use SMTP2GO, the sender must be a verified sender on your account. Leave blank to fall back to the platform default.</p>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-header"><h3 className="font-semibold">Approvals</h3></div>
+          <div className="card-body space-y-3">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={requireApproval}
+                onChange={(e) => setRequireApproval(e.target.checked)}
+              />
+              <span>
+                <span className="font-medium">Require approval before sending</span>
+                <p className="text-xs text-slate-500 mt-1">
+                  When on, a new request must be approved by an approver before it can be sent to support.
+                  When off, anyone can create a request and send it straight to support — no approval needed.
+                </p>
+              </span>
+            </label>
           </div>
         </div>
 

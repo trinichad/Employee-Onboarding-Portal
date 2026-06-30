@@ -35,6 +35,9 @@ class Organization(Base):
     slug: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # When False, requests skip the approval step entirely: any member can
+    # submit a request and send it straight to support without an approver.
+    require_approval: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     branding: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     support_email: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     from_email: Mapped[str] = mapped_column(String(255), nullable=False, default="")

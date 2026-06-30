@@ -60,7 +60,13 @@ export default function OrgRequestDetail() {
       };
       return orgApi.updateRequest(orgSlug, rid, patch);
     },
-    onSuccess: () => { toast.success("Saved"); invalidate(); },
+    onSuccess: () => {
+      toast.success("Changes saved", {
+        duration: 4000,
+        style: { fontSize: "1rem", fontWeight: 600, padding: "14px 18px" },
+      });
+      invalidate();
+    },
     onError: (e) => toast.error(apiError(e)),
   });
 

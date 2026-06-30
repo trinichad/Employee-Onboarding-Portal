@@ -43,7 +43,14 @@ export default function OrgRequestNew() {
       support_message: supportMessage || undefined,
       notes: notes || undefined,
     }),
-    onSuccess: (r) => { toast.success("Request created — awaiting approval"); nav(`/${orgSlug}/requests/${r.id}`); },
+    onSuccess: (r) => {
+      toast.success(
+        r.status === "pending_approval"
+          ? "Request created — awaiting approval"
+          : "Request created — ready to send to support",
+      );
+      nav(`/${orgSlug}/requests/${r.id}`);
+    },
     onError: (e) => toast.error(apiError(e)),
   });
 

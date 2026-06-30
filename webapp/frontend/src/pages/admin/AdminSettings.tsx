@@ -128,29 +128,29 @@ export default function AdminSettings() {
           <div className="card-header"><h3 className="font-semibold">General</h3></div>
           <div className="card-body space-y-3">
             <div>
-              <label className="label">Platform name</label>
-              <input className="input" value={platformName} onChange={(e) => setPlatformName(e.target.value)} />
+              <label className="label" htmlFor="set-platform-name">Platform name</label>
+              <input id="set-platform-name" className="input" value={platformName} onChange={(e) => setPlatformName(e.target.value)} />
               <p className="help">Shown in emails and the admin console.</p>
             </div>
             <div>
-              <label className="label">Default support email for new organizations</label>
-              <input className="input" type="email" value={defaultSupport} onChange={(e) => setDefaultSupport(e.target.value)} placeholder="support@example.com" />
+              <label className="label" htmlFor="set-default-support">Default support email for new organizations</label>
+              <input id="set-default-support" className="input" type="email" value={defaultSupport} onChange={(e) => setDefaultSupport(e.target.value)} placeholder="support@example.com" />
               <p className="help">Pre-fills the support email when a new organization is created. Existing orgs are not changed.</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="label">Default sender email (From)</label>
-                <input className="input" type="email" value={defaultFromEmail} onChange={(e) => setDefaultFromEmail(e.target.value)} placeholder="noreply@yourdomain.com" />
+                <label className="label" htmlFor="set-default-from-email">Default sender email (From)</label>
+                <input id="set-default-from-email" className="input" type="email" value={defaultFromEmail} onChange={(e) => setDefaultFromEmail(e.target.value)} placeholder="noreply@yourdomain.com" />
               </div>
               <div>
-                <label className="label">Default sender name</label>
-                <input className="input" value={defaultFromName} onChange={(e) => setDefaultFromName(e.target.value)} placeholder="Employee Onboarding Portal" />
+                <label className="label" htmlFor="set-default-from-name">Default sender name</label>
+                <input id="set-default-from-name" className="input" value={defaultFromName} onChange={(e) => setDefaultFromName(e.target.value)} placeholder="Employee Onboarding Portal" />
               </div>
             </div>
             <p className="help">Used as the From header on outbound emails when an organization hasn't set its own sender. Pre-fills the sender for newly created organizations. With SMTP2GO, every From address must be a verified sender on your account.</p>
             <div>
-              <label className="label">Platform timezone</label>
-              <select className="input" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+              <label className="label" htmlFor="set-timezone">Platform timezone</label>
+              <select id="set-timezone" className="input" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
                 {TIMEZONE_OPTIONS.map((tz) => (
                   <option key={tz} value={tz}>{tz}</option>
                 ))}
@@ -191,13 +191,13 @@ export default function AdminSettings() {
           <div className="card-body space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="md:col-span-3">
-                <label className="label">Public base URL</label>
-                <input className="input" value={publicBaseUrl} onChange={(e) => setPublicBaseUrl(e.target.value)} placeholder="https://onboarding.example.com" />
+                <label className="label" htmlFor="set-public-base-url">Public base URL</label>
+                <input id="set-public-base-url" className="input" value={publicBaseUrl} onChange={(e) => setPublicBaseUrl(e.target.value)} placeholder="https://onboarding.example.com" />
                 <p className="help">Used in invite, password-reset, and approval emails. Include the scheme (http/https) and any port if non-standard. Takes effect immediately.</p>
               </div>
               <div>
-                <label className="label">Listen port</label>
-                <input className="input" type="number" min={1} max={65535} value={backendPort} onChange={(e) => setBackendPort(Number(e.target.value))} />
+                <label className="label" htmlFor="set-listen-port">Listen port</label>
+                <input id="set-listen-port" className="input" type="number" min={1} max={65535} value={backendPort} onChange={(e) => setBackendPort(Number(e.target.value))} />
                 <p className="help">Single port serves both the API and the web UI.</p>
               </div>
               <div className="md:col-span-2 self-end pb-1 flex items-start gap-3">

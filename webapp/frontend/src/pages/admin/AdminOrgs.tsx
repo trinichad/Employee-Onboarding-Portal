@@ -109,10 +109,10 @@ export default function AdminOrgs() {
 
       <Modal open={open} onClose={() => setOpen(false)} title="New organization">
         <div className="space-y-4">
-          <div><label className="label">Organization name</label>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme Corp" /></div>
-          <div><label className="label">URL slug (optional)</label>
-            <input className="input" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="acme" />
+          <div><label className="label" htmlFor="neworg-name">Organization name</label>
+            <input id="neworg-name" className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme Corp" /></div>
+          <div><label className="label" htmlFor="neworg-slug">URL slug (optional)</label>
+            <input id="neworg-slug" className="input" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="acme" />
             <p className="help">Will appear in the URL: <code>{window.location.origin}/{slug || "auto"}</code></p>
           </div>
           <label className="flex items-center gap-2 text-sm">

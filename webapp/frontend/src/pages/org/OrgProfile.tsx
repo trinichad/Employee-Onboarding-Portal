@@ -37,19 +37,19 @@ export default function OrgProfile() {
         <div className="card">
           <div className="card-header"><h3 className="font-semibold">Profile</h3></div>
           <div className="card-body space-y-3">
-            <div><label className="label">Email</label><input className="input" value={user?.email || ""} disabled /></div>
-            <div><label className="label">Full name</label><input className="input" value={name} onChange={(e) => setName(e.target.value)} /></div>
-            <div><label className="label">Role</label><input className="input" value={user?.role} disabled /></div>
+            <div><label className="label" htmlFor="orgprof-email">Email</label><input id="orgprof-email" className="input" value={user?.email || ""} disabled /></div>
+            <div><label className="label" htmlFor="orgprof-fullname">Full name</label><input id="orgprof-fullname" name="name" autoComplete="name" className="input" value={name} onChange={(e) => setName(e.target.value)} /></div>
+            <div><label className="label" htmlFor="orgprof-role">Role</label><input id="orgprof-role" className="input" value={user?.role} disabled /></div>
             <div className="flex justify-end"><button className="btn-primary" disabled={busy} onClick={saveName}>{busy ? "Saving…" : "Save"}</button></div>
           </div>
         </div>
         <div className="card">
           <div className="card-header"><h3 className="font-semibold">Change password</h3></div>
           <div className="card-body space-y-3">
-            <div><label className="label">Current password</label>
-              <input className="input" type="password" value={pwCur} onChange={(e) => setPwCur(e.target.value)} /></div>
-            <div><label className="label">New password</label>
-              <input className="input" type="password" value={pwNew} onChange={(e) => setPwNew(e.target.value)} /></div>
+            <div><label className="label" htmlFor="orgprof-cur-pw">Current password</label>
+              <input id="orgprof-cur-pw" name="current-password" autoComplete="current-password" className="input" type="password" value={pwCur} onChange={(e) => setPwCur(e.target.value)} /></div>
+            <div><label className="label" htmlFor="orgprof-new-pw">New password</label>
+              <input id="orgprof-new-pw" name="new-password" autoComplete="new-password" className="input" type="password" value={pwNew} onChange={(e) => setPwNew(e.target.value)} /></div>
             <div className="flex justify-end"><button className="btn-primary" disabled={!pwCur || !pwNew || pwBusy} onClick={changePassword}>{pwBusy ? "Updating…" : "Update password"}</button></div>
           </div>
         </div>

@@ -198,7 +198,7 @@ export const orgApi = {
     api.delete(`/orgs/${slug}/requests/${id}`),
   exportRequestUrl: (slug: string, id: number) => `/api/v1/orgs/${slug}/requests/${id}/export`,
 
-  updateSettings: (slug: string, data: Partial<{ name: string; support_email: string; from_email: string; from_name: string; dashboard_columns: string[]; branding: any }>) =>
+  updateSettings: (slug: string, data: Partial<{ name: string; support_email: string; from_email: string; from_name: string; dashboard_columns: string[]; require_approval: boolean; branding: any }>) =>
     api.patch<Organization>(`/orgs/${slug}/settings`, data).then(r => r.data),
 
   uploadLogo: (slug: string, file: File) => {

@@ -59,12 +59,12 @@ export default function AdminLogin() {
     <AuthShell title="Global Admin Sign in" subtitle="Platform administration console">
       <form onSubmit={submit} className="space-y-4">
         <div>
-          <label className="label">Email</label>
-          <input className="input" type="email" autoFocus required value={email} onChange={(e) => setEmail(e.target.value)} />
+          <label className="label" htmlFor="admin-email">Email</label>
+          <input id="admin-email" name="email" autoComplete="email" className="input" type="email" autoFocus required value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <div>
-          <label className="label">Password</label>
-          <input className="input" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+          <label className="label" htmlFor="admin-password">Password</label>
+          <input id="admin-password" name="password" autoComplete="current-password" className="input" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
         <button type="submit" className="btn-primary w-full" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
         <p className="text-center text-xs text-slate-500">

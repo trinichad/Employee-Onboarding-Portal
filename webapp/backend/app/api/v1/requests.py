@@ -345,6 +345,10 @@ def create_request(
             if empty:
                 raise HTTPException(status_code=422, detail=f'"{f.get("label") or f.get("id")}" is required.')
 
+    # When the org has approval disabled, requests are auto-approved on
+    # creation so the submitter can send them straight to support — no
+    # approver action (or notification email) needed.
+    approval_required = bool(getattr(org, "require_approval", True))
     row = EmployeeRequest(
         organization_id=org.id,
         submitter_id=current.user.id,
@@ -353,7 +357,7 @@ def create_request(
         payload=body.payload,
         notes=body.notes,
         support_message=body.support_message,
-        status=RequestStatus.PENDING_APPROVAL,
+        status=RequestStatus.PENDING_APPROVAL if approval_required else RequestStatus.PENDING_SUBMITTAL,
     )
     db.add(row)
     db.flush()
@@ -361,6 +365,10 @@ def create_request(
           target_type="employee_request", target_id=row.id)
     db.commit()
     db.refresh(row)
+
+    if not approval_required:
+        # No approvers to notify; the request is ready to send.
+        return EmployeeRequestOut.model_validate(row)
 
     submitter_label = f"{current.user.full_name} <{current.user.email}>"
     link = _request_link(db, org, row.id)

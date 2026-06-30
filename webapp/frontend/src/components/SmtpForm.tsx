@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import toast from "react-hot-toast";
 import { adminApi } from "@/api";
 import { apiError } from "@/api/client";
@@ -33,6 +33,7 @@ export interface SmtpFormProps {
 }
 
 export function SmtpForm({ value, onSave, testScope, description, badge }: SmtpFormProps) {
+  const uid = useId();
   const [host, setHost] = useState(value.smtp_host || "");
   const [port, setPort] = useState<number | "">(value.smtp_port || "");
   const [security, setSecurity] = useState(value.smtp_security || "starttls");
@@ -101,8 +102,8 @@ export function SmtpForm({ value, onSave, testScope, description, badge }: SmtpF
         {description && <p className="text-sm text-slate-600">{description}</p>}
 
         <div>
-          <label className="label">Transport</label>
-          <select className="input" value={security} onChange={(e) => setSecurity(e.target.value)}>
+          <label className="label" htmlFor={`${uid}-transport`}>Transport</label>
+          <select id={`${uid}-transport`} className="input" value={security} onChange={(e) => setSecurity(e.target.value)}>
             {SECURITY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
           {security === "http_api" && (
@@ -117,13 +118,13 @@ export function SmtpForm({ value, onSave, testScope, description, badge }: SmtpF
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="md:col-span-2">
-                <label className="label">Host</label>
-                <input className="input" value={host} onChange={(e) => setHost(e.target.value)}
+                <label className="label" htmlFor={`${uid}-host`}>Host</label>
+                <input id={`${uid}-host`} className="input" value={host} onChange={(e) => setHost(e.target.value)}
                        placeholder="mail.smtp2go.com" />
               </div>
               <div>
-                <label className="label">Port</label>
-                <input className="input" type="number" min={0} max={65535}
+                <label className="label" htmlFor={`${uid}-port`}>Port</label>
+                <input id={`${uid}-port`} className="input" type="number" min={0} max={65535}
                        value={port}
                        onChange={(e) => setPort(e.target.value === "" ? "" : Number(e.target.value))}
                        placeholder={security === "ssl" ? "465" : security === "starttls" ? "587" : "2525"} />
@@ -131,8 +132,8 @@ export function SmtpForm({ value, onSave, testScope, description, badge }: SmtpF
             </div>
 
             <div>
-              <label className="label">Authentication method</label>
-              <select className="input" value={auth} onChange={(e) => setAuth(e.target.value)}>
+              <label className="label" htmlFor={`${uid}-auth`}>Authentication method</label>
+              <select id={`${uid}-auth`} className="input" value={auth} onChange={(e) => setAuth(e.target.value)}>
                 {AUTH_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
@@ -142,15 +143,15 @@ export function SmtpForm({ value, onSave, testScope, description, badge }: SmtpF
         {security !== "http_api" && auth !== "none" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="label">Username</label>
-              <input className="input" autoComplete="off" value={username}
+              <label className="label" htmlFor={`${uid}-username`}>Username</label>
+              <input id={`${uid}-username`} className="input" autoComplete="off" value={username}
                      onChange={(e) => setUsername(e.target.value)} />
             </div>
             <div>
-              <label className="label">
+              <label className="label" htmlFor={`${uid}-password`}>
                 Password{value.smtp_password_set ? " (saved — leave blank to keep)" : ""}
               </label>
-              <input className="input" type="password" autoComplete="new-password"
+              <input id={`${uid}-password`} className="input" type="password" autoComplete="new-password"
                      value={password} onChange={(e) => setPassword(e.target.value)}
                      placeholder={value.smtp_password_set ? "•••••••• (unchanged)" : ""} />
               {value.smtp_password_set && (
@@ -166,10 +167,10 @@ export function SmtpForm({ value, onSave, testScope, description, badge }: SmtpF
 
         {security === "http_api" && (
           <div>
-            <label className="label">
+            <label className="label" htmlFor={`${uid}-apikey`}>
               SMTP2GO API key{value.smtp_password_set ? " (saved — leave blank to keep)" : ""}
             </label>
-            <input className="input" type="password" autoComplete="new-password"
+            <input id={`${uid}-apikey`} className="input" type="password" autoComplete="new-password"
                    value={password} onChange={(e) => setPassword(e.target.value)}
                    placeholder={value.smtp_password_set ? "•••••••• (unchanged)" : "api-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"} />
             {value.smtp_password_set && (
@@ -188,8 +189,8 @@ export function SmtpForm({ value, onSave, testScope, description, badge }: SmtpF
           </button>
           <div className="flex items-end gap-2">
             <div>
-              <label className="label">Send test email to (optional)</label>
-              <input className="input" type="email" value={testTo}
+              <label className="label" htmlFor={`${uid}-testto`}>Send test email to (optional)</label>
+              <input id={`${uid}-testto`} className="input" type="email" value={testTo}
                      onChange={(e) => setTestTo(e.target.value)} placeholder="you@example.com" />
             </div>
             <button type="button" className="btn-secondary h-10" disabled={testing} onClick={test}

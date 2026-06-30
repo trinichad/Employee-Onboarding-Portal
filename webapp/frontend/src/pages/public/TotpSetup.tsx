@@ -80,8 +80,9 @@ export default function TotpSetup() {
             )}
           </div>
           <div>
-            <label className="label">Enter the 6-digit code from your app</label>
+            <label className="label" htmlFor="totp-setup-code">Enter the 6-digit code from your app</label>
             <input
+              id="totp-setup-code"
               className="input tracking-[0.4em] text-center text-lg"
               inputMode="numeric"
               autoComplete="one-time-code"

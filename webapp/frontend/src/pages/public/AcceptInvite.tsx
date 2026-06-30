@@ -48,12 +48,12 @@ export default function AcceptInvite() {
       ) : (
         <form onSubmit={submit} className="space-y-4">
           <div className="text-sm text-slate-600">Setting up <b>{info.email}</b> as <b>{info.role.replace("_", " ")}</b>.</div>
-          <div><label className="label">Full name</label>
-            <input className="input" required value={name} onChange={(e) => setName(e.target.value)} /></div>
-          <div><label className="label">Password</label>
-            <input className="input" type="password" required value={pw} onChange={(e) => setPw(e.target.value)} /></div>
-          <div><label className="label">Confirm password</label>
-            <input className="input" type="password" required value={pw2} onChange={(e) => setPw2(e.target.value)} /></div>
+          <div><label className="label" htmlFor="invite-name">Full name</label>
+            <input id="invite-name" name="name" autoComplete="name" className="input" required value={name} onChange={(e) => setName(e.target.value)} /></div>
+          <div><label className="label" htmlFor="invite-pw">Password</label>
+            <input id="invite-pw" name="new-password" autoComplete="new-password" className="input" type="password" required value={pw} onChange={(e) => setPw(e.target.value)} /></div>
+          <div><label className="label" htmlFor="invite-pw2">Confirm password</label>
+            <input id="invite-pw2" name="confirm-password" autoComplete="new-password" className="input" type="password" required value={pw2} onChange={(e) => setPw2(e.target.value)} /></div>
           <button className="btn-primary w-full" disabled={busy}>{busy ? "Activating…" : "Activate account"}</button>
         </form>
       )}

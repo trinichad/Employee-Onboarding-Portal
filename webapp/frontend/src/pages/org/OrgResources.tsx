@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
@@ -325,6 +325,7 @@ function ResourceModal({ resource, all, kinds, onClose, onSave, saving }: {
   onSave: (r: Partial<OrgResource>) => void;
   saving: boolean;
 }) {
+  const uid = useId();
   const kind = (resource.kind || kinds[0]?.value || "other") as ResourceKind;
   const meta = kinds.find((k) => k.value === kind) || kinds[0] || { value: kind, label: kind, attrs: [] };
   const [name, setName] = useState(resource.name || "");
@@ -345,17 +346,17 @@ function ResourceModal({ resource, all, kinds, onClose, onSave, saving }: {
         </div>
         <div className="p-4 space-y-3">
           <div>
-            <label className="label">Name <span className="text-red-500">*</span></label>
-            <input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="The Harth" />
+            <label className="label" htmlFor={`${uid}-name`}>Name <span className="text-red-500">*</span></label>
+            <input id={`${uid}-name`} className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="The Harth" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {meta.attrs.map((a) => (
               <div key={a.key} className={a.key === "notes" || a.key === "details" ? "md:col-span-2" : ""}>
-                <label className="label">{a.label}</label>
+                <label className="label" htmlFor={`${uid}-attr-${a.key}`}>{a.label}</label>
                 {a.key === "notes" || a.key === "details" ? (
-                  <textarea className="input min-h-[60px]" value={attrs[a.key] || ""} onChange={(e) => setAttrs({ ...attrs, [a.key]: e.target.value })} placeholder={a.placeholder} />
+                  <textarea id={`${uid}-attr-${a.key}`} className="input min-h-[60px]" value={attrs[a.key] || ""} onChange={(e) => setAttrs({ ...attrs, [a.key]: e.target.value })} placeholder={a.placeholder} />
                 ) : (
-                  <input className="input" value={attrs[a.key] || ""} onChange={(e) => setAttrs({ ...attrs, [a.key]: e.target.value })} placeholder={a.placeholder} />
+                  <input id={`${uid}-attr-${a.key}`} className="input" value={attrs[a.key] || ""} onChange={(e) => setAttrs({ ...attrs, [a.key]: e.target.value })} placeholder={a.placeholder} />
                 )}
               </div>
             ))}
@@ -630,8 +631,8 @@ function BulkImportModal({ orgSlug, activeKind, existing, kinds, onClose, onDone
 
           <div className="grid md:grid-cols-2 gap-3">
             <div>
-              <label className="label">Upload CSV file</label>
-              <input type="file" accept=".csv,text/csv" className="input" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
+              <label className="label" htmlFor="bulk-csv-file">Upload CSV file</label>
+              <input id="bulk-csv-file" type="file" accept=".csv,text/csv" className="input" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
               <button className="btn-ghost text-xs mt-1" onClick={() => onTextChange(sample)}>Insert sample for "{meta.label}"</button>
             </div>
             <div>
@@ -646,8 +647,9 @@ function BulkImportModal({ orgSlug, activeKind, existing, kinds, onClose, onDone
           </div>
 
           <div>
-            <label className="label">CSV content</label>
+            <label className="label" htmlFor="bulk-csv-content">CSV content</label>
             <textarea
+              id="bulk-csv-content"
               className="input min-h-[180px] font-mono text-xs"
               value={text}
               onChange={(e) => onTextChange(e.target.value)}
@@ -941,8 +943,8 @@ function ManageKindsModal({ orgSlug, current, existingResources, branding, onClo
                 </div>
                 <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2">
                   <div>
-                    <label className="label">Display name</label>
-                    <input className="input" value={k.label}
+                    <label className="label" htmlFor={`kind-${idx}-label`}>Display name</label>
+                    <input id={`kind-${idx}-label`} className="input" value={k.label}
                       onChange={(e) => {
                         const nextLabel = e.target.value;
                         // auto-suggest slug if value looks default and no resources
@@ -951,8 +953,8 @@ function ManageKindsModal({ orgSlug, current, existingResources, branding, onClo
                       }} />
                   </div>
                   <div>
-                    <label className="label">Internal value <span className="text-xs text-slate-400">(slug)</span></label>
-                    <input className="input font-mono text-sm" value={k.value}
+                    <label className="label" htmlFor={`kind-${idx}-value`}>Internal value <span className="text-xs text-slate-400">(slug)</span></label>
+                    <input id={`kind-${idx}-value`} className="input font-mono text-sm" value={k.value}
                       disabled={(counts[k.value] || 0) > 0}
                       title={(counts[k.value] || 0) > 0 ? "Locked — resources are using this value" : ""}
                       onChange={(e) => update(idx, { value: slugifyKind(e.target.value) })} />

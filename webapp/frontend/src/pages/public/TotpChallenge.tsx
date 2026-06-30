@@ -42,8 +42,9 @@ export default function TotpChallenge() {
     <AuthShell title="Two-factor verification" subtitle="Enter the 6-digit code from your authenticator app">
       <form onSubmit={submit} className="space-y-4">
         <div>
-          <label className="label">Authentication code</label>
+          <label className="label" htmlFor="totp-challenge-code">Authentication code</label>
           <input
+            id="totp-challenge-code"
             className="input tracking-[0.4em] text-center text-lg"
             inputMode="numeric"
             autoComplete="one-time-code"

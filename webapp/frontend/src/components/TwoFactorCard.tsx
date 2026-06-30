@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import toast from "react-hot-toast";
 import { meApi } from "@/api";
 import { apiError } from "@/api/client";
@@ -14,6 +14,7 @@ interface Props {
 type Mode = "idle" | "setup" | "reenroll-password" | "disable-password";
 
 export function TwoFactorCard({ user, onChange, required }: Props) {
+  const uid = useId();
   const enrolled = !!user.totp_enrolled;
   const [mode, setMode] = useState<Mode>("idle");
   const [data, setData] = useState<TotpSetupData | null>(null);
@@ -115,8 +116,8 @@ export function TwoFactorCard({ user, onChange, required }: Props) {
               Confirm your password to register a new authenticator. Your existing device keeps working until you confirm a code from the new one.
             </p>
             <div>
-              <label className="label">Current password</label>
-              <input className="input" type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus />
+              <label className="label" htmlFor={`${uid}-reenroll-pw`}>Current password</label>
+              <input id={`${uid}-reenroll-pw`} name="current-password" autoComplete="current-password" className="input" type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus />
             </div>
             <div className="flex gap-2 justify-end">
               <button className="btn-secondary" onClick={reset}>Cancel</button>
@@ -147,8 +148,9 @@ export function TwoFactorCard({ user, onChange, required }: Props) {
               )}
             </div>
             <div>
-              <label className="label">6-digit code</label>
+              <label className="label" htmlFor={`${uid}-totp-code`}>6-digit code</label>
               <input
+                id={`${uid}-totp-code`}
                 className="input tracking-[0.4em] text-center"
                 inputMode="numeric"
                 maxLength={6}
@@ -172,8 +174,8 @@ export function TwoFactorCard({ user, onChange, required }: Props) {
               Enter your current password to disable two-factor authentication.
             </p>
             <div>
-              <label className="label">Current password</label>
-              <input className="input" type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus />
+              <label className="label" htmlFor={`${uid}-disable-pw`}>Current password</label>
+              <input id={`${uid}-disable-pw`} name="current-password" autoComplete="current-password" className="input" type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus />
             </div>
             <div className="flex gap-2 justify-end">
               <button className="btn-secondary" onClick={reset}>Cancel</button>

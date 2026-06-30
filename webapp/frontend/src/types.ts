@@ -21,6 +21,7 @@ export interface Organization {
   slug: string;
   name: string;
   is_active: boolean;
+  require_approval: boolean;
   branding: Record<string, any>;
   support_email?: string;
   from_email?: string;

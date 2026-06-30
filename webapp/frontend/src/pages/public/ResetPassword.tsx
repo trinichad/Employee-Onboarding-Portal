@@ -36,10 +36,10 @@ export default function ResetPassword() {
         <p className="text-sm text-red-600">Invalid reset link.</p>
       ) : (
         <form onSubmit={submit} className="space-y-4">
-          <div><label className="label">New password</label>
-            <input className="input" type="password" required value={pw} onChange={(e) => setPw(e.target.value)} /></div>
-          <div><label className="label">Confirm password</label>
-            <input className="input" type="password" required value={pw2} onChange={(e) => setPw2(e.target.value)} /></div>
+          <div><label className="label" htmlFor="reset-pw">New password</label>
+            <input id="reset-pw" name="new-password" autoComplete="new-password" className="input" type="password" required value={pw} onChange={(e) => setPw(e.target.value)} /></div>
+          <div><label className="label" htmlFor="reset-pw2">Confirm password</label>
+            <input id="reset-pw2" name="confirm-password" autoComplete="new-password" className="input" type="password" required value={pw2} onChange={(e) => setPw2(e.target.value)} /></div>
           <button className="btn-primary w-full" disabled={busy}>{busy ? "Saving…" : "Update password"}</button>
           <div className="text-center text-xs"><Link className="text-brand-600 hover:underline" to={orgSlug ? `/${orgSlug}/login` : "/admin/login"}>Back to sign in</Link></div>
         </form>

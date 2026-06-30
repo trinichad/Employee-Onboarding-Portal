@@ -81,6 +81,7 @@ class OrganizationCreate(BaseModel):
 class OrganizationUpdate(BaseModel):
     name: Optional[str] = None
     is_active: Optional[bool] = None
+    require_approval: Optional[bool] = None
     branding: Optional[Dict[str, Any]] = None
     support_email: Optional[str] = None
     from_email: Optional[str] = None
@@ -93,6 +94,7 @@ class OrganizationOut(ORMModel):
     slug: str
     name: str
     is_active: bool
+    require_approval: bool = True
     branding: Dict[str, Any]
     support_email: str = ""
     from_email: str = ""

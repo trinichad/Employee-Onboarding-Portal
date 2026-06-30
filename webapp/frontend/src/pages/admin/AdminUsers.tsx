@@ -116,8 +116,8 @@ export default function AdminUsers() {
       <Modal open={inviteOpen} onClose={() => setInviteOpen(false)} title="Invite user">
         <div className="space-y-3">
           <div>
-            <label className="label">Role</label>
-            <select className="input" value={iRole} onChange={(e) => setIRole(e.target.value as Role)}>
+            <label className="label" htmlFor="inv-role">Role</label>
+            <select id="inv-role" className="input" value={iRole} onChange={(e) => setIRole(e.target.value as Role)}>
               <option value="user">Standard User</option>
               <option value="client_admin">Client Admin</option>
               <option value="global_admin">Global Admin (team member)</option>
@@ -125,8 +125,8 @@ export default function AdminUsers() {
           </div>
           {iRole !== "global_admin" && (
             <div>
-              <label className="label">Organization <span className="text-red-500">*</span></label>
-              <select className="input" value={iOrg} onChange={(e) => setIOrg(e.target.value)}>
+              <label className="label" htmlFor="inv-org">Organization <span className="text-red-500">*</span></label>
+              <select id="inv-org" className="input" value={iOrg} onChange={(e) => setIOrg(e.target.value)}>
                 <option value="">Select an organization…</option>
                 {orgs.data?.map((o) => (
                   <option key={o.id} value={String(o.id)}>{o.name}</option>
@@ -135,12 +135,12 @@ export default function AdminUsers() {
             </div>
           )}
           <div>
-            <label className="label">Full name</label>
-            <input className="input" value={iName} onChange={(e) => setIName(e.target.value)} />
+            <label className="label" htmlFor="inv-name">Full name</label>
+            <input id="inv-name" className="input" value={iName} onChange={(e) => setIName(e.target.value)} />
           </div>
           <div>
-            <label className="label">Email</label>
-            <input type="email" className="input" value={iEmail} onChange={(e) => setIEmail(e.target.value)} />
+            <label className="label" htmlFor="inv-email">Email</label>
+            <input id="inv-email" type="email" className="input" value={iEmail} onChange={(e) => setIEmail(e.target.value)} />
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <button className="btn-secondary" onClick={() => setInviteOpen(false)}>Cancel</button>
@@ -275,16 +275,17 @@ function EditUserModal({
         <section className="space-y-3">
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
-              <label className="label">Full name</label>
-              <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+              <label className="label" htmlFor="edituser-name">Full name</label>
+              <input id="edituser-name" className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} />
             </div>
             <div>
-              <label className="label">Email</label>
-              <input type="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <label className="label" htmlFor="edituser-email">Email</label>
+              <input id="edituser-email" type="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
             <div>
-              <label className="label">Role</label>
+              <label className="label" htmlFor="edituser-role">Role</label>
               <select
+                id="edituser-role"
                 className="input"
                 value={role}
                 onChange={(e) => {
@@ -299,8 +300,9 @@ function EditUserModal({
               </select>
             </div>
             <div>
-              <label className="label">Organization {orgRequired && <span className="text-red-500">*</span>}</label>
+              <label className="label" htmlFor="edituser-org">Organization {orgRequired && <span className="text-red-500">*</span>}</label>
               <select
+                id="edituser-org"
                 className="input"
                 value={orgId}
                 onChange={(e) => setOrgId(e.target.value)}

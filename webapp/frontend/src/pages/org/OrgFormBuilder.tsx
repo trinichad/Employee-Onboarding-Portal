@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -151,10 +151,11 @@ export default function OrgFormBuilder() {
           </div>
 
           <div className="card"><div className="card-body grid md:grid-cols-2 gap-4">
-            <div><label className="label">Form name</label>
-              <input className="input" value={doc.form_name || ""} onChange={(e) => setDoc({ ...doc, form_name: e.target.value })} /></div>
-            <div><label className="label">Request types (one per line)</label>
+            <div><label className="label" htmlFor="fb-form-name">Form name</label>
+              <input id="fb-form-name" className="input" value={doc.form_name || ""} onChange={(e) => setDoc({ ...doc, form_name: e.target.value })} /></div>
+            <div><label className="label" htmlFor="fb-request-types">Request types (one per line)</label>
               <LinesTextarea
+                id="fb-request-types"
                 value={doc.request_types || []}
                 onCommit={(lines) => setDoc({ ...doc, request_types: lines })}
                 className="input min-h-[80px]"
@@ -296,6 +297,7 @@ function FieldEditor({ field, allFields, requestTypes, kindLabels, kindAttrs, on
   isFirst: boolean;
   isLast: boolean;
 }) {
+  const uid = useId();
   const [open, setOpen] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const f = field;
@@ -364,19 +366,19 @@ function FieldEditor({ field, allFields, requestTypes, kindLabels, kindAttrs, on
           {/* Basics */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="label">Label <span className="text-red-500">*</span></label>
-              <input className="input" value={f.label} onChange={(e) => onChange({ label: e.target.value })} placeholder="e.g. Property" />
+              <label className="label" htmlFor={`${uid}-label`}>Label <span className="text-red-500">*</span></label>
+              <input id={`${uid}-label`} className="input" value={f.label} onChange={(e) => onChange({ label: e.target.value })} placeholder="e.g. Property" />
               <p className="help">What the person filling out the form sees.</p>
             </div>
             <div>
-              <label className="label">Field type</label>
-              <select className="input" value={f.type} onChange={(e) => onChange({ type: e.target.value })}>
+              <label className="label" htmlFor={`${uid}-type`}>Field type</label>
+              <select id={`${uid}-type`} className="input" value={f.type} onChange={(e) => onChange({ type: e.target.value })}>
                 {Object.entries(FIELD_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </div>
             <div className="md:col-span-2">
-              <label className="label">Help text (optional)</label>
-              <input className="input" value={f.description || ""} onChange={(e) => onChange({ description: e.target.value })} placeholder="A short hint shown under the field." />
+              <label className="label" htmlFor={`${uid}-help`}>Help text (optional)</label>
+              <input id={`${uid}-help`} className="input" value={f.description || ""} onChange={(e) => onChange({ description: e.target.value })} placeholder="A short hint shown under the field." />
             </div>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={!!f.required} onChange={(e) => onChange({ required: e.target.checked })} />
@@ -387,8 +389,9 @@ function FieldEditor({ field, allFields, requestTypes, kindLabels, kindAttrs, on
           {/* Type-specific config */}
           {f.type === "select" && (
             <div className="rounded-md bg-slate-50 dark:bg-slate-900/40 p-3">
-              <label className="label">Options (one per line)</label>
+              <label className="label" htmlFor={`${uid}-options`}>Options (one per line)</label>
               <LinesTextarea
+                id={`${uid}-options`}
                 value={f.options || []}
                 onCommit={(lines) => onChange({ options: lines })}
                 className="input min-h-[80px]"
@@ -400,8 +403,8 @@ function FieldEditor({ field, allFields, requestTypes, kindLabels, kindAttrs, on
           {f.type === "resource" && (
             <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900 p-3 space-y-3">
               <div>
-                <label className="label">Pick from which Resources catalog?</label>
-                <select className="input" value={f.resource_kind || ""}
+                <label className="label" htmlFor={`${uid}-rkind`}>Pick from which Resources catalog?</label>
+                <select id={`${uid}-rkind`} className="input" value={f.resource_kind || ""}
                   onChange={(e) => onChange({ resource_kind: e.target.value || undefined })}>
                   <option value="">— choose a kind —</option>
                   {Object.entries(kindLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -409,8 +412,8 @@ function FieldEditor({ field, allFields, requestTypes, kindLabels, kindAttrs, on
                 <p className="help">Manage these entries on the <strong>Resources</strong> page.</p>
               </div>
               <div>
-                <label className="label">Only show options linked to another field? (optional)</label>
-                <select className="input" value={f.filter_by?.source_field_id || ""}
+                <label className="label" htmlFor={`${uid}-filter`}>Only show options linked to another field? (optional)</label>
+                <select id={`${uid}-filter`} className="input" value={f.filter_by?.source_field_id || ""}
                   onChange={(e) => onChange({ filter_by: e.target.value ? { source_field_id: e.target.value } : undefined })}>
                   <option value="">No — show all {f.resource_kind ? (kindLabels[f.resource_kind] || f.resource_kind).toLowerCase() + "s" : "options"}</option>
                   {allFields.filter((x) => x.id !== f.id && x.type === "resource").map((x) => (
@@ -458,9 +461,9 @@ function FieldEditor({ field, allFields, requestTypes, kindLabels, kindAttrs, on
           {advanced && (
             <div className="rounded-md border border-dashed border-slate-300 dark:border-slate-700 p-3 space-y-3">
               <div>
-                <label className="label">Auto-fill this field from another field's selection (optional)</label>
+                <label className="label" htmlFor={`${uid}-autofrom`}>Auto-fill this field from another field's selection (optional)</label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <select className="input" value={f.auto_from?.source_field_id || ""}
+                  <select id={`${uid}-autofrom`} className="input" value={f.auto_from?.source_field_id || ""}
                     onChange={(e) => onChange({ auto_from: e.target.value ? { source_field_id: e.target.value, attribute: f.auto_from?.attribute || "name" } : undefined })}>
                     <option value="">— don't auto-fill —</option>
                     {allFields.filter((x) => x.id !== f.id).map((x) => (
@@ -484,8 +487,8 @@ function FieldEditor({ field, allFields, requestTypes, kindLabels, kindAttrs, on
               </div>
 
               <div>
-                <label className="label">Special role (optional)</label>
-                <select className="input" value={f.role || ""}
+                <label className="label" htmlFor={`${uid}-role`}>Special role (optional)</label>
+                <select id={`${uid}-role`} className="input" value={f.role || ""}
                   onChange={(e) => onChange({ role: e.target.value || undefined })}>
                   {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
@@ -505,8 +508,8 @@ function FieldEditor({ field, allFields, requestTypes, kindLabels, kindAttrs, on
               </div>
 
               <div>
-                <label className="label">Field ID (technical name)</label>
-                <input className="input font-mono text-xs" value={f.id} onChange={(e) => onChange({ id: e.target.value })} />
+                <label className="label" htmlFor={`${uid}-fieldid`}>Field ID (technical name)</label>
+                <input id={`${uid}-fieldid`} className="input font-mono text-xs" value={f.id} onChange={(e) => onChange({ id: e.target.value })} />
                 <p className="help">Used in exports and as the storage key. Leave alone unless you know what you're doing.</p>
               </div>
             </div>
@@ -976,11 +979,12 @@ function VisibleWhenConfig({ group, resourceFields, onChange }: {
  * a new blank line). Commits the cleaned list on blur, and resyncs from
  * props when the parent value changes externally.
  */
-function LinesTextarea({ value, onCommit, className, placeholder }: {
+function LinesTextarea({ value, onCommit, className, placeholder, id }: {
   value: string[];
   onCommit: (lines: string[]) => void;
   className?: string;
   placeholder?: string;
+  id?: string;
 }) {
   const joined = (value || []).join("\n");
   const [text, setText] = useState(joined);
@@ -995,6 +999,7 @@ function LinesTextarea({ value, onCommit, className, placeholder }: {
   }, [joined]);
   return (
     <textarea
+      id={id}
       className={className}
       placeholder={placeholder}
       value={text}

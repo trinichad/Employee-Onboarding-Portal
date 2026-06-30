@@ -490,8 +490,9 @@ export function FormRenderer({ schema, values, onChange, disabled, orgSlug }: Pr
     <div className="space-y-6">
       {schema.request_types && schema.request_types.length > 0 && (
         <div>
-          <label className="label">Request Type</label>
+          <label className="label" htmlFor="form-request-type">Request Type</label>
           <select
+            id="form-request-type"
             className="input"
             disabled={disabled}
             value={values.request_type || ""}
