@@ -7,6 +7,7 @@ import { PageHeader, Spinner } from "@/components/ui";
 import { SmtpForm } from "@/components/SmtpForm";
 import { ALL_COLUMNS, DEFAULT_COLUMNS } from "@/pages/org/OrgDashboard";
 import { loadPlatformConfig } from "@/lib/platform";
+import type { UpdateStatus } from "@/types";
 
 // Common IANA zones; falls back to Intl.supportedValuesOf when available.
 const TIMEZONE_OPTIONS: string[] = (() => {
@@ -297,6 +298,10 @@ export default function AdminSettings() {
         </button>
       </div>
 
+      <div className="mt-6">
+        <SoftwareUpdateCard />
+      </div>
+
       <div className="mt-6 grid md:grid-cols-2 gap-4">
         <PlatformLogoCard
           logoUrl={settings.data?.logo_url || null}
@@ -308,6 +313,115 @@ export default function AdminSettings() {
         <DatabaseBackupCard />
       </div>
     </>
+  );
+}
+
+function SoftwareUpdateCard() {
+  const info = useQuery({ queryKey: ["admin.system.info"], queryFn: adminApi.getSystemInfo });
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<UpdateStatus | null>(null);
+  const [waiting, setWaiting] = useState(false); // server unreachable (mid-restart)
+  const pollRef = useRef<number | null>(null);
+  const startedRef = useRef(0);
+
+  const stopPolling = () => {
+    if (pollRef.current) { window.clearInterval(pollRef.current); pollRef.current = null; }
+  };
+  useEffect(() => stopPolling, []);
+
+  const poll = async () => {
+    try {
+      const i = await adminApi.getSystemInfo();
+      setWaiting(false);
+      setStatus(i.status);
+      if (i.status?.state === "done") {
+        stopPolling(); setBusy(false);
+        toast.success("Update complete — reload to get the latest UI.");
+        info.refetch();
+      } else if (i.status?.state === "failed") {
+        stopPolling(); setBusy(false);
+        toast.error(i.status.message || "Update failed");
+      } else if (Date.now() - startedRef.current > 8 * 60 * 1000) {
+        stopPolling(); setBusy(false);
+        toast.error("Update is taking longer than expected — check the server.");
+      }
+    } catch {
+      // Server unreachable — almost certainly mid-restart. Keep waiting.
+      setWaiting(true);
+    }
+  };
+
+  const run = async () => {
+    if (!confirm(
+      "Pull the latest code from GitHub, rebuild the web UI, and restart the backend?\n\n" +
+      "The portal will be briefly unavailable during the restart."
+    )) return;
+    setBusy(true);
+    setStatus({ state: "running", phase: "Starting" });
+    startedRef.current = Date.now();
+    try {
+      await adminApi.startUpdate();
+      pollRef.current = window.setInterval(poll, 2000);
+    } catch (e) {
+      setBusy(false); setStatus(null);
+      toast.error(apiError(e));
+    }
+  };
+
+  const st = status;
+  const phase = waiting ? "Restarting backend…" : (st?.phase || "Working…");
+  const log = st?.log;
+
+  return (
+    <div className="card">
+      <div className="card-header"><h3 className="font-semibold">Software updates</h3></div>
+      <div className="card-body space-y-3">
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          Pulls the latest code from GitHub, rebuilds the web UI, and restarts the backend —
+          the same as running <code>update.sh</code> on the server.
+        </p>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+          <div><span className="text-slate-500">Version:</span> <span className="font-mono">{info.data?.version ?? "—"}</span></div>
+          <div><span className="text-slate-500">Commit:</span> <span className="font-mono">{info.data?.git_sha ?? "—"}</span></div>
+        </div>
+
+        {busy && (
+          <div className="rounded-md bg-slate-50 dark:bg-slate-900/40 p-3 text-sm flex items-center gap-3">
+            <Spinner />
+            <div>
+              <div className="font-medium">{phase}</div>
+              {waiting && <div className="text-xs text-slate-500">Waiting for the backend to come back online…</div>}
+            </div>
+          </div>
+        )}
+
+        {!busy && st?.state === "done" && (
+          <div className="rounded-md bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 p-3 text-sm">
+            {st.message || "Update complete."}{" "}
+            <button className="underline font-medium" onClick={() => window.location.reload()}>Reload page</button>
+          </div>
+        )}
+        {!busy && st?.state === "failed" && (
+          <div className="rounded-md bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-200 p-3 text-sm">
+            <div className="font-medium">{st.message || "Update failed."}</div>
+            {st.phase && <div className="text-xs mt-0.5">Failed at: {st.phase}</div>}
+          </div>
+        )}
+
+        {log && (st?.state === "failed" || st?.state === "done") && (
+          <details className="text-xs">
+            <summary className="cursor-pointer text-slate-500">Show build log</summary>
+            <pre className="mt-1 max-h-64 overflow-auto rounded bg-slate-900 text-slate-100 p-3 whitespace-pre-wrap">{log}</pre>
+          </details>
+        )}
+
+        <div>
+          <button className="btn-primary" disabled={busy} onClick={run}>
+            {busy ? "Updating…" : "Update & restart"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

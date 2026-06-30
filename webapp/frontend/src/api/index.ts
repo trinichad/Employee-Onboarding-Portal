@@ -15,6 +15,7 @@ import type {
   ResourceKind,
   Role,
   SmtpConfigUpdate,
+  SystemInfo,
   TokenPair,
   TotpSetupData,
   User,
@@ -143,6 +144,10 @@ export const adminApi = {
     api.patch<PlatformSettings>("/admin/settings", data).then(r => r.data),
   restart: () =>
     api.post<{ status: string; service: string; message?: string }>("/admin/restart").then(r => r.data),
+  getSystemInfo: () =>
+    api.get<SystemInfo>("/admin/system/info").then(r => r.data),
+  startUpdate: () =>
+    api.post<{ started: boolean; message: string }>("/admin/system/update").then(r => r.data),
   getOrgSmtp: (orgId: number) =>
     api.get<OrganizationSmtp>(`/admin/organizations/${orgId}/smtp`).then(r => r.data),
   updateOrgSmtp: (orgId: number, data: SmtpConfigUpdate) =>

@@ -1360,3 +1360,30 @@ def admin_restore_database(
         "ok": True,
         "message": "Database restored. Restart the API server to reload all connections cleanly.",
     }
+
+
+# --- Software update ----------------------------------------------------------
+# Pull the latest code from git, rebuild the frontend, and restart the backend
+# (via a self-exit that systemd's Restart=on-failure brings back up). Mirrors
+# the operator's manual update.sh. Global-admin only.
+@router.get("/system/info")
+def system_info() -> dict:
+    from app.services import self_update
+    return {
+        **self_update.current_revision(),
+        "update_in_progress": self_update.is_running(),
+        "status": self_update.read_status(),
+    }
+
+
+@router.post("/system/update", status_code=202)
+def system_update(
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_global_admin),
+) -> dict:
+    from app.services import self_update
+    if not self_update.start_update(current.user.email):
+        raise HTTPException(status_code=409, detail="An update is already in progress.")
+    audit(db, actor_id=current.user.id, action="admin.self_update")
+    db.commit()
+    return {"started": True, "message": "Update started. The backend will restart when the build finishes."}

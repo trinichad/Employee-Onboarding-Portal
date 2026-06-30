@@ -214,6 +214,26 @@ export interface OrganizationSmtp extends SmtpConfig {
   organization_id: number;
 }
 
+export interface UpdateStatus {
+  state?: "running" | "restarting" | "done" | "failed";
+  phase?: string;
+  ok?: boolean | null;
+  message?: string;
+  log?: string;
+  version?: string;
+  git_sha?: string;
+  started_by?: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+}
+
+export interface SystemInfo {
+  version: string;
+  git_sha: string;
+  update_in_progress: boolean;
+  status: UpdateStatus;
+}
+
 export interface PlatformSettings extends SmtpConfig {
   platform_name: string;
   default_support_email: string;

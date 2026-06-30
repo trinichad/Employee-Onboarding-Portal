@@ -180,6 +180,13 @@ async def lifespan(app: FastAPI):
     # In production, use `alembic upgrade head` instead.
     Base.metadata.create_all(bind=engine)
     _ensure_dev_schema()
+    # If we exited mid-update to restart, mark the self-update as complete now
+    # that we're back up on the new build.
+    try:
+        from app.services.self_update import finalize_after_restart
+        finalize_after_restart()
+    except Exception:  # pragma: no cover - never block startup on this
+        pass
     yield
 
 
