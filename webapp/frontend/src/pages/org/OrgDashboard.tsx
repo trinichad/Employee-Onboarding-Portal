@@ -59,6 +59,13 @@ export default function OrgDashboard() {
     return data.filter((r) => f.statuses!.includes(r.status));
   }, [reqs.data, filter]);
 
+  // Hide the "Pending approval" stat when this org doesn't require approval —
+  // requests skip that stage, so the count is always 0 and just adds noise.
+  const requireApproval = org.data?.require_approval ?? true;
+  const visibleFilters = requireApproval
+    ? FILTERS
+    : FILTERS.filter((f) => f.key !== "pending_approval");
+
   const colKeys = (org.data?.dashboard_columns?.length ? org.data.dashboard_columns : DEFAULT_COLUMNS);
   const cols = colKeys
     .map((k) => ALL_COLUMNS.find((c) => c.key === k))
@@ -70,8 +77,8 @@ export default function OrgDashboard() {
         title="Dashboard"
         actions={<Link className="btn-primary" to={`/${orgSlug}/requests/new`}><Plus size={16} /> New request</Link>}
       />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {FILTERS.map((f) => (
+      <div className={clsx("grid grid-cols-2 gap-4", requireApproval ? "md:grid-cols-4" : "md:grid-cols-3")}>
+        {visibleFilters.map((f) => (
           <button
             key={f.key}
             type="button"
