@@ -178,9 +178,11 @@ def export_organization(db: Session, org: Organization) -> dict:
                 "submitter_email": _user_email(r.submitter_id),
                 "approved_by_email": _user_email(r.approved_by_id),
                 "submitted_by_email": _user_email(r.submitted_by_id),
+                "completed_by_email": _user_email(r.completed_by_id),
                 "approved_at": _iso(r.approved_at),
                 "submitted_at": _iso(r.submitted_at),
                 "first_submitted_at": _iso(r.first_submitted_at),
+                "completed_at": _iso(r.completed_at),
                 "created_at": _iso(r.created_at),
             }
             for r in requests
@@ -401,6 +403,7 @@ def import_organization(
         submitter = user_by_email.get((r.get("submitter_email") or "").strip().lower())
         approver = user_by_email.get((r.get("approved_by_email") or "").strip().lower())
         submitted_by = user_by_email.get((r.get("submitted_by_email") or "").strip().lower())
+        completed_by = user_by_email.get((r.get("completed_by_email") or "").strip().lower())
         row = EmployeeRequest(
             organization_id=org.id,
             submitter_id=submitter.id if submitter else None,
@@ -412,6 +415,8 @@ def import_organization(
             submitted_at=_parse_dt(r.get("submitted_at")),
             first_submitted_at=_parse_dt(r.get("first_submitted_at")),
             submitted_by_id=submitted_by.id if submitted_by else None,
+            completed_at=_parse_dt(r.get("completed_at")),
+            completed_by_id=completed_by.id if completed_by else None,
             payload=r.get("payload") or {},
             notes=r.get("notes"),
             support_message=r.get("support_message"),

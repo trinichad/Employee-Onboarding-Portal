@@ -16,17 +16,20 @@ const ALL_COLUMNS: { key: string; label: string; render: (r: EmployeeRequest) =>
   { key: "created_at", label: "When", render: (r) => formatDateTime(r.created_at) },
   { key: "approved_at", label: "Approved", render: (r) => r.approved_at ? formatDateTime(r.approved_at) : "—" },
   { key: "submitted_at", label: "Submitted", render: (r) => r.submitted_at ? formatDateTime(r.submitted_at) : "—" },
+  { key: "completed_at", label: "Completed", render: (r) => r.completed_at ? formatDateTime(r.completed_at) : "—" },
 ];
 
 const DEFAULT_COLUMNS = ["id", "subject", "type", "status", "created_at"];
 
-type FilterKey = "all" | "pending_approval" | "pending_submittal" | "submitted";
+type FilterKey = "all" | "pending_approval" | "pending_submittal" | "submitted" | "completed";
 
 const FILTERS: { key: FilterKey; label: string; statuses: RequestStatus[] | null }[] = [
   { key: "all", label: "Total Requests", statuses: null },
   { key: "pending_approval", label: "Pending approval", statuses: ["pending_approval"] },
   { key: "pending_submittal", label: "Pending submittal", statuses: ["pending_submittal"] },
-  { key: "submitted", label: "Submitted", statuses: ["submitted", "in_progress", "completed"] },
+  // Submitted and Completed are mutually exclusive so the cards don't double-count.
+  { key: "submitted", label: "Submitted", statuses: ["submitted", "in_progress"] },
+  { key: "completed", label: "Completed", statuses: ["completed"] },
 ];
 
 export default function OrgDashboard() {
@@ -43,11 +46,13 @@ export default function OrgDashboard() {
       pending_approval: 0,
       pending_submittal: 0,
       submitted: 0,
+      completed: 0,
     };
     for (const r of data) {
       if (r.status === "pending_approval") result.pending_approval++;
       else if (r.status === "pending_submittal") result.pending_submittal++;
-      else if (r.status === "submitted" || r.status === "in_progress" || r.status === "completed") result.submitted++;
+      else if (r.status === "submitted" || r.status === "in_progress") result.submitted++;
+      else if (r.status === "completed") result.completed++;
     }
     return result;
   }, [reqs.data]);
@@ -77,7 +82,7 @@ export default function OrgDashboard() {
         title="Dashboard"
         actions={<Link className="btn-primary" to={`/${orgSlug}/requests/new`}><Plus size={16} /> New request</Link>}
       />
-      <div className={clsx("grid grid-cols-2 gap-4", requireApproval ? "md:grid-cols-4" : "md:grid-cols-3")}>
+      <div className={clsx("grid grid-cols-2 gap-4", requireApproval ? "md:grid-cols-5" : "md:grid-cols-4")}>
         {visibleFilters.map((f) => (
           <button
             key={f.key}

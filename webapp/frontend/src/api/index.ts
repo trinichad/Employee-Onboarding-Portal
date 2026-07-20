@@ -199,6 +199,10 @@ export const orgApi = {
     api.post<EmployeeRequest>(`/orgs/${slug}/requests/${id}/submit`).then(r => r.data),
   resubmitRequest: (slug: string, id: number) =>
     api.post<EmployeeRequest>(`/orgs/${slug}/requests/${id}/resubmit`).then(r => r.data),
+  completeRequest: (slug: string, id: number) =>
+    api.post<EmployeeRequest>(`/orgs/${slug}/requests/${id}/complete`).then(r => r.data),
+  reopenRequest: (slug: string, id: number) =>
+    api.post<EmployeeRequest>(`/orgs/${slug}/requests/${id}/reopen`).then(r => r.data),
   deleteRequest: (slug: string, id: number) =>
     api.delete(`/orgs/${slug}/requests/${id}`),
   exportRequestUrl: (slug: string, id: number) => `/api/v1/orgs/${slug}/requests/${id}/export`,

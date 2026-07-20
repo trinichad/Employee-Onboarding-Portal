@@ -29,6 +29,26 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def completed_last_order():
+    """Ordering applied to every request listing, org-scoped and platform-wide.
+
+    Completed requests sink to the bottom of the list while keeping their
+    place relative to each other by request date (newest first), so an
+    active queue is never buried under finished work.
+
+    `created_at` is only second-resolution on SQLite, so id breaks ties —
+    without it, requests filed in the same second come back in arbitrary
+    order and the list reshuffles between page loads.
+    """
+    from sqlalchemy import case
+
+    return (
+        case((EmployeeRequest.status == RequestStatus.COMPLETED, 1), else_=0),
+        EmployeeRequest.created_at.desc(),
+        EmployeeRequest.id.desc(),
+    )
+
+
 def _request_link(db: Session, org: Organization, request_id: int) -> str:
     from app.services.runtime import public_base_url
     return f"{public_base_url(db)}/{org.slug}/requests/{request_id}"
@@ -312,7 +332,7 @@ def list_requests(
     # submissions). Use mine_only=true to opt into a personal view.
     if mine_only:
         query = query.filter(EmployeeRequest.submitter_id == current.user.id)
-    rows = query.order_by(EmployeeRequest.created_at.desc()).all()
+    rows = query.order_by(*completed_last_order()).all()
     return [EmployeeRequestOut.model_validate(r) for r in rows]
 
 
@@ -638,6 +658,61 @@ def resubmit_request_to_support(
     audit(db, actor_id=current.user.id, action="request.resubmit_to_support", organization_id=org.id,
           target_type="employee_request", target_id=row.id,
           meta={"to": org.support_email, "revision": revision})
+    db.commit()
+    db.refresh(row)
+    return EmployeeRequestOut.model_validate(row)
+
+
+@router.post("/{request_id}/complete", response_model=EmployeeRequestOut)
+def complete_request(
+    request_id: int,
+    bound=Depends(require_org_member),
+    db: Session = Depends(get_db),
+):
+    """Close out a request that support has finished working.
+
+    Allowed for: any approver, OR the original submitter — the same audience
+    that can send the request to support in the first place.
+    """
+    org, current = bound
+    row = _load(db, org.id, request_id)
+    if row.status not in (RequestStatus.SUBMITTED, RequestStatus.IN_PROGRESS):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Only a request that has been sent to support can be completed (status: {row.status.value})",
+        )
+    is_submitter = row.submitter_id == current.user.id
+    if not (is_approver(current) or is_submitter):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    row.status = RequestStatus.COMPLETED
+    row.completed_at = _now()
+    row.completed_by_id = current.user.id
+    audit(db, actor_id=current.user.id, action="request.complete", organization_id=org.id,
+          target_type="employee_request", target_id=row.id)
+    db.commit()
+    db.refresh(row)
+    return EmployeeRequestOut.model_validate(row)
+
+
+@router.post("/{request_id}/reopen", response_model=EmployeeRequestOut)
+def reopen_request(
+    request_id: int,
+    bound=Depends(require_org_member),
+    db: Session = Depends(get_db),
+):
+    """Undo a completion, returning the request to the submitted queue."""
+    org, current = bound
+    row = _load(db, org.id, request_id)
+    if row.status != RequestStatus.COMPLETED:
+        raise HTTPException(status_code=409, detail="Request is not completed")
+    is_submitter = row.submitter_id == current.user.id
+    if not (is_approver(current) or is_submitter):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    row.status = RequestStatus.SUBMITTED
+    row.completed_at = None
+    row.completed_by_id = None
+    audit(db, actor_id=current.user.id, action="request.reopen", organization_id=org.id,
+          target_type="employee_request", target_id=row.id)
     db.commit()
     db.refresh(row)
     return EmployeeRequestOut.model_validate(row)

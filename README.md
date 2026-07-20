@@ -267,7 +267,7 @@ Core tables (see auto-managed schema in [webapp/backend/app/main.py](webapp/back
 - `organizations` — tenant; branding (`logo_ext`), SMTP overrides, dashboard column config, from-email/from-name, support email.
 - `users` — `email`, `password_hash`, `role`, `organization_id`, `can_approve_requests`, TOTP fields, `theme`.
 - `platform_settings` — singleton row for platform-wide SMTP, timezone, ports (`backend_port`, `frontend_port`), `public_base_url`, platform logo.
-- `employee_requests` — submission data + workflow state (`status`, `submitted_at`, `first_submitted_at`, `approved_by_id`, `approved_at`, `submission_count`, `edited_after_submit`, `support_message`).
+- `employee_requests` — submission data + workflow state (`status`, `submitted_at`, `first_submitted_at`, `approved_by_id`, `approved_at`, `completed_at`, `completed_by_id`, `submission_count`, `edited_after_submit`, `support_message`).
 - `audit_log` — append-only record of writes (who, when, what).
 - Plus form schema, custom fields, resources, and invitation/reset token tables.
 
@@ -287,7 +287,7 @@ All endpoints are mounted under `/api/v1/` (see [webapp/backend/app/api/v1/__ini
 | `forms` | [forms.py](webapp/backend/app/api/v1/forms.py) | Per-org form schema (data-driven form) |
 | `resources` | [resources.py](webapp/backend/app/api/v1/resources.py) | Reusable resource lists (groups, mailboxes, drives) |
 | `employees` | [employees.py](webapp/backend/app/api/v1/employees.py) | Employee directory / history lookups |
-| `requests` | [requests.py](webapp/backend/app/api/v1/requests.py) | Submit, list, view, approve, edit employee requests |
+| `requests` | [requests.py](webapp/backend/app/api/v1/requests.py) | Submit, list, view, approve, edit, complete/reopen employee requests |
 
 Interactive API docs: `http://<host>:8000/api/docs`.
 

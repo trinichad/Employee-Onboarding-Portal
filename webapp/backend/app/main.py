@@ -143,6 +143,8 @@ def _ensure_dev_schema() -> None:
                 ("support_message", "ALTER TABLE employee_requests ADD COLUMN support_message TEXT"),
                 ("edited_after_submit", "ALTER TABLE employee_requests ADD COLUMN edited_after_submit BOOLEAN NOT NULL DEFAULT 0"),
                 ("submission_count", "ALTER TABLE employee_requests ADD COLUMN submission_count INTEGER NOT NULL DEFAULT 0"),
+                ("completed_at", "ALTER TABLE employee_requests ADD COLUMN completed_at DATETIME"),
+                ("completed_by_id", "ALTER TABLE employee_requests ADD COLUMN completed_by_id INTEGER REFERENCES users(id)"),
             ]:
                 if not has_col("employee_requests", col):
                     conn.exec_driver_sql(ddl)

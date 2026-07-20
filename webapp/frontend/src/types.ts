@@ -181,6 +181,8 @@ export interface EmployeeRequest {
   submitted_by_id?: number | null;
   submitted_at?: string | null;
   first_submitted_at?: string | null;
+  completed_at?: string | null;
+  completed_by_id?: number | null;
   edited_after_submit?: boolean;
   submission_count?: number;
   created_at: string;

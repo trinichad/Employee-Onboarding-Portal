@@ -809,7 +809,8 @@ def list_all_requests(
     q = db.query(EmployeeRequest)
     if organization_id is not None:
         q = q.filter(EmployeeRequest.organization_id == organization_id)
-    rows = q.order_by(EmployeeRequest.created_at.desc()).limit(limit).all()
+    from app.api.v1.requests import completed_last_order
+    rows = q.order_by(*completed_last_order()).limit(limit).all()
     return [EmployeeRequestOut.model_validate(r) for r in rows]
 
 

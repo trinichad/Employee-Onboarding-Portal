@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
-import { Check, Download, RefreshCw, Send, Trash2, X } from "lucide-react";
+import { Check, CheckCircle2, Download, RefreshCw, RotateCcw, Send, Trash2, X } from "lucide-react";
 import { orgApi } from "@/api";
 import { apiError, getAccessToken } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
@@ -111,6 +111,18 @@ export default function OrgRequestDetail() {
     onError: (e) => toast.error(apiError(e)),
   });
 
+  const complete = useMutation({
+    mutationFn: () => orgApi.completeRequest(orgSlug, rid),
+    onSuccess: () => { toast.success("Marked completed"); invalidate(); },
+    onError: (e) => toast.error(apiError(e)),
+  });
+
+  const reopen = useMutation({
+    mutationFn: () => orgApi.reopenRequest(orgSlug, rid),
+    onSuccess: () => { toast.success("Request reopened"); invalidate(); },
+    onError: (e) => toast.error(apiError(e)),
+  });
+
   const del = useMutation({
     mutationFn: () => orgApi.deleteRequest(orgSlug, rid),
     onSuccess: () => {
@@ -132,6 +144,11 @@ export default function OrgRequestDetail() {
   const wasSent = !!req.data.submitted_at;
   const editedAfterSubmit = !!req.data.edited_after_submit;
   const canResubmit = wasSent && (isApprover || isSubmitter);
+  // Closing out a request is open to the same audience that can send it to
+  // support: any approver, or the person who filed it.
+  const canClose = isApprover || isSubmitter;
+  const canComplete = canClose && (req.data.status === "submitted" || req.data.status === "in_progress");
+  const canReopen = canClose && req.data.status === "completed";
   const supportEmail = org.data?.support_email || "";
 
   return (
@@ -156,6 +173,26 @@ export default function OrgRequestDetail() {
               onClick={() => { if (confirm("Resend the edited version to support? They will be told to disregard the previously sent copy.")) resubmit.mutate(); }}
             >
               <RefreshCw size={14} /> Resend edited version
+            </button>
+          )}
+          {canComplete && (
+            <button
+              className="btn-primary"
+              disabled={complete.isPending}
+              title="Close this request out — support has finished the work"
+              onClick={() => complete.mutate()}
+            >
+              <CheckCircle2 size={14} /> Mark completed
+            </button>
+          )}
+          {canReopen && (
+            <button
+              className="btn-secondary"
+              disabled={reopen.isPending}
+              title="Move this request back into the submitted queue"
+              onClick={() => { if (confirm("Reopen this request? It will move back to Submitted.")) reopen.mutate(); }}
+            >
+              <RotateCcw size={14} /> Reopen
             </button>
           )}
           {(isAdmin || canEditNotes) && <button className="btn-secondary" disabled={save.isPending} onClick={() => save.mutate()}>{save.isPending ? "Saving…" : "Save"}</button>}
@@ -187,6 +224,9 @@ export default function OrgRequestDetail() {
           )}
           {req.data.submitted_at && !req.data.first_submitted_at && (
             <div><div className="text-xs text-slate-500">Sent to support</div><div>{formatDateTime(req.data.submitted_at)}{req.data.submission_count && req.data.submission_count > 1 ? ` (rev ${req.data.submission_count})` : ""}</div></div>
+          )}
+          {req.data.completed_at && (
+            <div><div className="text-xs text-slate-500">Completed</div><div>{formatDateTime(req.data.completed_at)}</div></div>
           )}
         </div>
       </div>

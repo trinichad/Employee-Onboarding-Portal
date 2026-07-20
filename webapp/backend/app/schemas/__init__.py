@@ -256,6 +256,8 @@ class EmployeeRequestOut(ORMModel):
     submitted_by_id: Optional[int] = None
     submitted_at: Optional[datetime] = None
     first_submitted_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    completed_by_id: Optional[int] = None
     edited_after_submit: bool = False
     submission_count: int = 0
     created_at: datetime

@@ -167,6 +167,8 @@ class EmployeeRequest(Base):
     submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     first_submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     submitted_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     support_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
