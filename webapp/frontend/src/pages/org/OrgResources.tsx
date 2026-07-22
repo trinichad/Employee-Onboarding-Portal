@@ -1,9 +1,9 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import toast from "react-hot-toast";
-import { Plus, Trash2, Pencil, X, Upload, Download, Settings2, GripVertical } from "lucide-react";
+import { Plus, Trash2, Pencil, X, Upload, Download, Settings2, GripVertical, Search, List, LayoutGrid, ChevronRight } from "lucide-react";
 import { orgApi } from "@/api";
 import { apiError } from "@/api/client";
 import { PageHeader, Spinner } from "@/components/ui";
@@ -60,6 +60,13 @@ const DEFAULT_KINDS: KindDef[] = [
 interface KindAttr { key: string; label: string; placeholder?: string }
 interface KindDef { value: string; label: string; attrs: KindAttr[] }
 
+type ViewMode = "list" | "grid";
+const VIEW_KEY = "org.resources.view";
+
+function hasValue(v: any): boolean {
+  return v !== undefined && v !== null && v !== "";
+}
+
 export default function OrgResources() {
   const { orgSlug = "" } = useParams();
   const qc = useQueryClient();
@@ -67,6 +74,42 @@ export default function OrgResources() {
   const [editing, setEditing] = useState<Partial<OrgResource> | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [manageKindsOpen, setManageKindsOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
+  // List is the default; the choice sticks per browser.
+  const [view, setView] = useState<ViewMode>(() => {
+    try { return localStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list"; } catch { return "list"; }
+  });
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const modalOpen = !!editing || importOpen || manageKindsOpen;
+
+  const chooseView = (v: ViewMode) => {
+    setView(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* private mode — not worth failing over */ }
+  };
+
+  const toggleExpanded = (id: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  // "/" jumps to the search box, the way it does in most list UIs.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey || modalOpen) return;
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el?.isContentEditable) return;
+      e.preventDefault();
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [modalOpen]);
 
   const org = useQuery({ queryKey: ["org", orgSlug], queryFn: () => orgApi.get(orgSlug) });
   const list = useQuery({
@@ -96,6 +139,38 @@ export default function OrgResources() {
     for (const r of list.data || []) (map[r.kind] ||= []).push(r);
     return map;
   }, [list.data]);
+
+  const nameById = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const r of list.data || []) m.set(r.id, r.name);
+    return m;
+  }, [list.data]);
+
+  // Search runs across every category so the tab counts double as a "where is
+  // it?" hint. Matches on name, attribute values, and linked resource names;
+  // all whitespace-separated terms must hit.
+  const matchIds = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return null;
+    const terms = q.split(/\s+/);
+    const ids = new Set<number>();
+    for (const r of list.data || []) {
+      const hay = [
+        r.name,
+        ...Object.values(r.attributes || {}).map((v) => (hasValue(v) ? String(v) : "")),
+        ...(r.linked_resource_ids || []).map((id) => nameById.get(id) || ""),
+      ].join(" ").toLowerCase();
+      if (terms.every((t) => hay.includes(t))) ids.add(r.id);
+    }
+    return ids;
+  }, [query, list.data, nameById]);
+
+  const visibleByKind = useMemo(() => {
+    if (!matchIds) return byKind;
+    const map: Record<string, OrgResource[]> = {};
+    for (const [k, v] of Object.entries(byKind)) map[k] = v.filter((r) => matchIds.has(r.id));
+    return map;
+  }, [byKind, matchIds]);
 
   const save = useMutation({
     mutationFn: async (r: Partial<OrgResource>) => {
@@ -191,7 +266,13 @@ export default function OrgResources() {
 
   const kindMeta = KINDS.find((k) => k.value === activeKind) || KINDS[0];
   const safeActiveKind = kindMeta?.value || "";
-  const rows = byKind[safeActiveKind] || [];
+  const rows = visibleByKind[safeActiveKind] || [];
+  const totalInKind = (byKind[safeActiveKind] || []).length;
+  const searching = matchIds !== null;
+  // When the active tab comes up empty, point at the tabs that did match.
+  const elsewhere = searching
+    ? KINDS.filter((k) => k.value !== safeActiveKind && (visibleByKind[k.value] || []).length > 0)
+    : [];
 
   return (
     <>
@@ -229,54 +310,160 @@ export default function OrgResources() {
         }
       />
 
-      <div className="flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-700 mb-4">
-        {KINDS.map((k) => (
-          <button key={k.value} onClick={() => setActiveKind(k.value)}
-            className={`px-3 py-2 text-sm font-medium ${activeKind === k.value ? "border-b-2 border-brand-600 text-brand-700" : "text-slate-500 hover:text-slate-800 dark:text-slate-300 dark:hover:text-white"}`}>
-            {k.label} <span className="ml-1 text-xs text-slate-400">{(byKind[k.value] || []).length}</span>
-          </button>
-        ))}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
+        <div className="relative flex-1 sm:max-w-md">
+          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            ref={searchRef}
+            className="input pl-9 pr-16"
+            // Deliberately type="text": type="search" adds WebKit's own clear
+            // button on top of ours.
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape" && query) { e.preventDefault(); setQuery(""); } }}
+            placeholder="Search all resources…"
+            aria-label="Search resources"
+          />
+          {query ? (
+            <button
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              onClick={() => { setQuery(""); searchRef.current?.focus(); }}
+              aria-label="Clear search"
+            >
+              <X size={14} />
+            </button>
+          ) : (
+            <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 hidden sm:block rounded border border-slate-200 px-1.5 py-0.5 text-[10px] text-slate-400 dark:border-slate-600 dark:text-slate-500">/</kbd>
+          )}
+        </div>
+
+        <div className="sm:ml-auto inline-flex self-start rounded-md ring-1 ring-slate-200 dark:ring-slate-700 overflow-hidden">
+          {([["list", List, "List"], ["grid", LayoutGrid, "Cards"]] as const).map(([mode, Icon, label]) => (
+            <button
+              key={mode}
+              onClick={() => chooseView(mode)}
+              aria-pressed={view === mode}
+              title={`${label} view`}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium ${
+                view === mode
+                  ? "bg-brand-600 text-white"
+                  : "bg-white text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+              }`}
+            >
+              <Icon size={16} /> {label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {rows.length === 0 && (
-        <div className="card"><div className="card-body text-sm text-slate-500 italic">No {(kindMeta?.label || "").toLowerCase()} entries yet.</div></div>
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-700 mb-4">
+        {KINDS.map((k) => {
+          const n = (visibleByKind[k.value] || []).length;
+          return (
+            <button key={k.value} onClick={() => setActiveKind(k.value)}
+              className={`px-3 py-2 text-sm font-medium ${activeKind === k.value ? "border-b-2 border-brand-600 text-brand-700" : "text-slate-500 hover:text-slate-800 dark:text-slate-300 dark:hover:text-white"} ${searching && n === 0 ? "opacity-40" : ""}`}>
+              {k.label} <span className="ml-1 text-xs text-slate-400">{n}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {searching && rows.length > 0 && (
+        <p className="text-xs text-slate-500 mb-2">
+          {rows.length} of {totalInKind} {(kindMeta?.label || "").toLowerCase()} entries match "{query.trim()}".
+        </p>
       )}
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {rows.map((r) => (
-          <div key={r.id} className={`card ${r.is_active ? "" : "opacity-60"}`}>
-            <div className="card-body space-y-2">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="font-semibold">{r.name}</div>
-                  {!r.is_active && <span className="badge-amber text-xs">inactive</span>}
-                </div>
-                <div className="flex gap-1">
-                  <button className="btn-ghost" title="Edit" onClick={() => setEditing(r)}><Pencil size={14} /></button>
-                  <button className="btn-ghost text-red-600" title="Delete" onClick={() => { if (confirm(`Delete "${r.name}"?`)) del.mutate(r.id); }}><Trash2 size={14} /></button>
-                </div>
-              </div>
-              <dl className="text-xs space-y-0.5">
-                {(KINDS.find((k) => k.value === r.kind)?.attrs || []).map((a) => {
-                  const v = r.attributes?.[a.key];
-                  if (v === undefined || v === null || v === "") return null;
-                  return (
-                    <div key={a.key} className="flex gap-2">
-                      <dt className="text-slate-500 w-24 shrink-0">{a.label}</dt>
-                      <dd className="text-slate-800 dark:text-slate-200 break-all">{String(v)}</dd>
-                    </div>
-                  );
-                })}
-              </dl>
-              {r.linked_resource_ids?.length > 0 && (
-                <div className="text-xs text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-700">
-                  Linked: {r.linked_resource_ids.map((id) => (list.data || []).find((x) => x.id === id)?.name || `#${id}`).join(", ")}
-                </div>
-              )}
-            </div>
+      {rows.length === 0 && (
+        <div className="card">
+          <div className="card-body text-sm text-slate-500 space-y-2">
+            {searching ? (
+              <>
+                <div className="italic">No {(kindMeta?.label || "").toLowerCase()} entries match "{query.trim()}".</div>
+                {elsewhere.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 not-italic">
+                    <span>Found in:</span>
+                    {elsewhere.map((k) => (
+                      <button key={k.value} className="btn-secondary py-1 px-2 text-xs" onClick={() => setActiveKind(k.value)}>
+                        {k.label} ({(visibleByKind[k.value] || []).length})
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="italic">No {(kindMeta?.label || "").toLowerCase()} entries yet.</div>
+            )}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
+
+      {rows.length > 0 && view === "list" && (
+        <div className="card divide-y divide-slate-100 dark:divide-slate-700">
+          {rows.map((r) => {
+            const attrs = (KINDS.find((k) => k.value === r.kind)?.attrs || []).filter((a) => hasValue(r.attributes?.[a.key]));
+            const open = expanded.has(r.id);
+            const preview = attrs.slice(0, 4).map((a) => a.label).join(" · ");
+            const more = attrs.length - Math.min(attrs.length, 4);
+            return (
+              <div key={r.id} className={r.is_active ? "" : "opacity-60"}>
+                <div className="flex items-center gap-1 px-3 sm:px-4">
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center gap-2 py-3 text-left"
+                    aria-expanded={open}
+                    aria-controls={`resource-detail-${r.id}`}
+                    onClick={() => toggleExpanded(r.id)}
+                  >
+                    <ChevronRight size={16} className={`shrink-0 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />
+                    <span className="font-medium truncate">{r.name}</span>
+                    {!r.is_active && <span className="badge-amber text-xs shrink-0">inactive</span>}
+                    {!open && (preview || r.linked_resource_ids?.length > 0) && (
+                      <span className="hidden md:block truncate text-xs text-slate-500">
+                        {preview}{more > 0 ? ` +${more}` : ""}
+                      </span>
+                    )}
+                  </button>
+                  <button className="btn-ghost shrink-0" title="Edit" onClick={() => setEditing(r)}><Pencil size={14} /></button>
+                  <button className="btn-ghost text-red-600 shrink-0" title="Delete" onClick={() => { if (confirm(`Delete "${r.name}"?`)) del.mutate(r.id); }}><Trash2 size={14} /></button>
+                </div>
+                {open && (
+                  <div id={`resource-detail-${r.id}`} className="px-3 sm:px-4 pb-3 pl-9 sm:pl-10">
+                    <ResourceDetails resource={r} attrs={attrs} all={list.data || []} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {rows.length > 0 && view === "grid" && (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {rows.map((r) => (
+            <div key={r.id} className={`card ${r.is_active ? "" : "opacity-60"}`}>
+              <div className="card-body space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="font-semibold">{r.name}</div>
+                    {!r.is_active && <span className="badge-amber text-xs">inactive</span>}
+                  </div>
+                  <div className="flex gap-1">
+                    <button className="btn-ghost" title="Edit" onClick={() => setEditing(r)}><Pencil size={14} /></button>
+                    <button className="btn-ghost text-red-600" title="Delete" onClick={() => { if (confirm(`Delete "${r.name}"?`)) del.mutate(r.id); }}><Trash2 size={14} /></button>
+                  </div>
+                </div>
+                <ResourceDetails
+                  resource={r}
+                  attrs={(KINDS.find((k) => k.value === r.kind)?.attrs || []).filter((a) => hasValue(r.attributes?.[a.key]))}
+                  all={list.data || []}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {editing && (
         <ResourceModal
@@ -314,6 +501,38 @@ export default function OrgResources() {
         />
       )}
     </>
+  );
+}
+
+/** The saved settings for one resource — its attribute values plus any links.
+ *  Shared by the expanded list row and the card view. */
+function ResourceDetails({ resource, attrs, all }: {
+  resource: OrgResource;
+  attrs: KindAttr[];
+  all: OrgResource[];
+}) {
+  const linked = resource.linked_resource_ids || [];
+  if (attrs.length === 0 && linked.length === 0) {
+    return <div className="text-xs text-slate-500 italic">Nothing set yet.</div>;
+  }
+  return (
+    <div className="space-y-2">
+      {attrs.length > 0 && (
+        <dl className="text-xs space-y-0.5">
+          {attrs.map((a) => (
+            <div key={a.key} className="flex gap-2">
+              <dt className="text-slate-500 w-24 shrink-0">{a.label}</dt>
+              <dd className="text-slate-800 dark:text-slate-200 break-all">{String(resource.attributes?.[a.key])}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {linked.length > 0 && (
+        <div className="text-xs text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-700">
+          Linked: {linked.map((id) => all.find((x) => x.id === id)?.name || `#${id}`).join(", ")}
+        </div>
+      )}
+    </div>
   );
 }
 
